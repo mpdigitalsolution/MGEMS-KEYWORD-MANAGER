@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html data-theme="google-ads">
 <head>
   <meta charset="UTF-8">
   <link rel="stylesheet" href="popup.css">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  
 </head>
 <body>
   <!-- Header -->
@@ -18,7 +18,7 @@
     <div class="header-right">
       <span id="badge-count" class="badge-count hidden">0</span>
       <button id="export-btn" class="btn-icon" title="Export all">
-        <span class="material-icons">download</span>
+        <span class="emoji-icon">⬇️</span>
       </button>
     </div>
   </div>
@@ -26,19 +26,24 @@
   <!-- Tabs -->
   <div class="tabs">
     <button class="tab active" data-tab="tab-keywords" title="Keywords">
-      <span class="material-icons">list</span>
+      <span class="emoji-icon">📋</span>
+      <span class="tab-label">Keywords</span>
     </button>
     <button class="tab" data-tab="tab-negative" title="Search Term Analysis">
-      <span class="material-icons">block</span>
+      <span class="emoji-icon">🚫</span>
+      <span class="tab-label">Negatives</span>
     </button>
     <button class="tab" data-tab="tab-performance" title="Performance">
-      <span class="material-icons">trending_up</span>
+      <span class="emoji-icon">📊</span>
+      <span class="tab-label">Performance</span>
     </button>
     <button class="tab" data-tab="tab-planner" title="Planner Analyzer">
-      <span class="material-icons">manage_search</span>
+      <span class="emoji-icon">🔍</span>
+      <span class="tab-label">Planner</span>
     </button>
     <button class="tab" data-tab="tab-settings" title="Settings">
-      <span class="material-icons">settings</span>
+      <span class="emoji-icon">⚙️</span>
+      <span class="tab-label">Settings</span>
     </button>
   </div>
 
@@ -49,6 +54,17 @@
       <button class="mt-btn" data-value="broad">Broad</button>
       <button class="mt-btn active" data-value="phrase">Phrase</button>
       <button class="mt-btn" data-value="exact">Exact</button>
+      <label class="cap-toggle" title="Auto-capitalize keywords">
+        <input type="checkbox" id="capitalize-cb">
+        <span class="cap-label">ABC</span>
+      </label>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state-kw" class="empty-state">
+      <span class="emoji-icon">📋</span>
+      <h3>No keywords yet</h3>
+      <p>Click <strong>Add Keywords</strong> below to paste keywords, or use <strong>AI Suggestions</strong> to generate them.</p>
     </div>
 
     <!-- Count Bar + Select All -->
@@ -60,6 +76,15 @@
       </div>
     </div>
 
+    <!-- Loading Skeleton -->
+    <div id="skeleton-loading">
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card w60"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card w40"></div>
+      <div class="skeleton skeleton-card"></div>
+    </div>
+
     <!-- Keyword List -->
     <div id="kw-list" class="kw-list"></div>
 
@@ -68,20 +93,20 @@
       <span id="sel-bar-label"></span>
       <div class="sel-bar-actions">
         <button id="copy-sel-btn" class="btn-sm" title="Copy selected">
-          <span class="material-icons">content_copy</span> Copy
+          <span class="emoji-icon">📋</span> Copy
         </button>
         <button id="remove-sel-btn" class="btn-sm btn-danger" title="Remove selected">
-          <span class="material-icons">delete</span> Remove
+          <span class="emoji-icon">🗑️</span> Remove
         </button>
         <button id="export-sel-btn" class="btn-sm" title="Export selected as CSV">
-          <span class="material-icons">file_download</span> Export
+          <span class="emoji-icon">⬇️</span> Export
         </button>
       </div>
     </div>
 
     <!-- Collapsible Add Keywords -->
     <details class="add-section">
-      <summary class="add-toggle"><span class="material-icons">add</span> Add Keywords</summary>
+      <summary class="add-toggle"><span class="emoji-icon">➕</span> Add Keywords</summary>
       <div class="add-body">
         <textarea id="bulk-paste" class="add-textarea" placeholder="Paste keywords, one per line"></textarea>
         <button id="bulk-add-btn" class="btn-primary">Add to List</button>
@@ -90,7 +115,7 @@
 
     <!-- AI Suggestions -->
     <details class="add-section">
-      <summary class="add-toggle"><span class="material-icons">auto_awesome</span> AI Suggestions</summary>
+      <summary class="add-toggle"><span class="emoji-icon">✨</span> AI Suggestions</summary>
       <div class="add-body">
         <button id="get-suggestions-btn" class="btn-primary" style="margin-bottom:8px;">Generate Suggestions</button>
         <div id="suggestions-list" class="suggestions-list"></div>
@@ -100,7 +125,7 @@
 
     <!-- Generate Ads -->
     <details class="add-section">
-      <summary class="add-toggle"><span class="material-icons">text_fields</span> Generate Ads</summary>
+      <summary class="add-toggle"><span class="emoji-icon">📝</span> Generate Ads</summary>
       <div class="add-body">
         <button id="generate-ads-btn" class="btn-primary" style="margin-bottom:8px;">Generate Headlines & Descriptions</button>
         <button id="regenerate-ads-btn" class="btn-sm hidden">Regenerate</button>
@@ -118,14 +143,19 @@
 
   <!-- TAB: Negative (Search Term Analysis) -->
   <div id="tab-negative" class="tab-content">
+    <div id="empty-state-neg" class="empty-state">
+      <span class="emoji-icon">☁️</span>
+      <h3>Analyze search terms</h3>
+      <p>Upload a Search Terms CSV from Google Ads to find negative keywords and opportunities.</p>
+    </div>
     <button id="upload-csv-btn" class="btn-primary upload-trigger">
-      <span class="material-icons">upload_file</span> Upload Search Terms CSV
+      <span class="emoji-icon">📤</span> Upload Search Terms CSV
     </button>
     <input type="file" id="csv-file-input" accept=".csv" style="display:none;">
 
     <div id="upload-area" class="upload-area hidden">
       <div id="upload-zone" class="upload-zone">
-        <div class="upload-icon"><span class="material-icons">cloud_upload</span></div>
+        <div class="upload-icon"><span class="emoji-icon">☁️</span></div>
         <p class="upload-text">Drop CSV here or click to browse</p>
       </div>
       <div id="upload-progress" class="progress hidden">
@@ -149,10 +179,10 @@
 
       <div style="display:flex;gap:8px;margin-top:12px;">
         <button id="export-neg-btn" class="btn-sm btn-danger" style="flex:1;">
-          <span class="material-icons">block</span> Export Negatives
+          <span class="emoji-icon">🚫</span> Export Negatives
         </button>
         <button id="add-good-btn" class="btn-sm" style="flex:1;background:#059669;color:white;">
-          <span class="material-icons">playlist_add</span> Add All Good
+          <span class="emoji-icon">📋</span> Add All Good
         </button>
       </div>
     </div>
@@ -160,14 +190,19 @@
 
   <!-- TAB: Performance -->
   <div id="tab-performance" class="tab-content">
+    <div id="empty-state-perf" class="empty-state">
+      <span class="emoji-icon">📊</span>
+      <h3>Analyze performance</h3>
+      <p>Upload a keyword performance CSV to identify pause candidates and optimize your campaigns.</p>
+    </div>
     <button id="upload-perf-btn" class="btn-primary upload-trigger">
-      <span class="material-icons">trending_up</span> Upload Performance CSV
+      <span class="emoji-icon">📊</span> Upload Performance CSV
     </button>
     <input type="file" id="perf-file-input" accept=".csv" style="display:none;">
 
     <div id="perf-upload-area" class="upload-area hidden">
       <div id="perf-upload-zone" class="upload-zone">
-        <div class="upload-icon"><span class="material-icons">analytics</span></div>
+        <div class="upload-icon"><span class="emoji-icon">📈</span></div>
         <p class="upload-text">Drop performance CSV here</p>
       </div>
       <div id="perf-progress" class="progress hidden">
@@ -183,21 +218,26 @@
         <div id="perf-pause-list"></div>
       </div>
       <button id="export-perf-btn" class="btn-sm btn-danger" style="margin-top:12px;width:100%;">
-        <span class="material-icons">pause</span> Export Pause List
+        <span class="emoji-icon">⏸️</span> Export Pause List
       </button>
     </div>
   </div>
 
   <!-- TAB: Planner -->
   <div id="tab-planner" class="tab-content">
+    <div id="empty-state-planner" class="empty-state">
+      <span class="emoji-icon">🔍</span>
+      <h3>Analyze keyword planner data</h3>
+      <p>Upload a Keyword Planner CSV to organize keywords into ad groups by intent.</p>
+    </div>
     <button id="upload-planner-btn" class="btn-primary upload-trigger">
-      <span class="material-icons">manage_search</span> High-Intent Keyword Analyzer
+      <span class="emoji-icon">🔍</span> High-Intent Keyword Analyzer
     </button>
     <input type="file" id="planner-file-input" accept=".csv" style="display:none;">
 
     <div id="planner-upload-area" class="upload-area hidden">
       <div id="planner-upload-zone" class="upload-zone">
-        <div class="upload-icon"><span class="material-icons">file_upload</span></div>
+        <div class="upload-icon"><span class="emoji-icon">📤</span></div>
         <p class="upload-text">Upload Keyword Planner CSV</p>
       </div>
       <div id="planner-progress" class="progress hidden">
@@ -222,7 +262,7 @@
       <div class="results-summary" id="planner-summary"></div>
       <div id="ad-groups"></div>
       <button id="download-planner-btn" class="btn-sm" style="margin-top:12px;width:100%;">
-        <span class="material-icons">download</span> Export for Editor
+        <span class="emoji-icon">⬇️</span> Export for Editor
       </button>
     </div>
   </div>
@@ -230,32 +270,47 @@
   <!-- TAB: Settings -->
   <div id="tab-settings" class="tab-content">
     <div class="settings-scroll">
-      <label class="setting-row">
-        <span>Capitalize Keywords</span>
-        <input type="checkbox" id="capitalize-cb">
-      </label>
-      <label class="setting-row">
-        <span>Capture Debug Mode</span>
-        <input type="checkbox" id="debug-cb">
-      </label>
+      <!-- Theme on top (most used) -->
+      <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <span style="font-size:12px;color:var(--text-secondary);font-weight:500">🎨 Theme</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="theme-btn active" data-theme-val="google-ads" style="background:#fff;color:#202124;border-color:#4285F4">🔵 Google Ads</button>
+          <button class="theme-btn" data-theme-val="ads-dark" style="background:#1a1c23;color:#e8eaed;border-color:#4285F4">🌙 Ads Dark</button>
+          <button class="theme-btn" data-theme-val="performance" style="background:#0f1a14;color:#e8eaed;border-color:#34A853">🟢 Performance</button>
+          <button class="theme-btn" data-theme-val="agency" style="background:#1a1410;color:#e8eaed;border-color:#F9AB00">🌟 Agency</button>
+          <button class="theme-btn" data-theme-val="minimal" style="background:#f5f5f5;color:#1e293b;border-color:#475569">⬜ Minimal</button>
+        </div>
+      </div>
       <div class="setting-divider"></div>
+
+      <!-- API Key -->
       <div class="setting-row">
-        <span>DeepSeek API Key</span>
+        <span>🔑 DeepSeek API Key</span>
         <input type="password" id="api-key-input" placeholder="sk-..." class="input-sm" style="flex:1;">
         <button id="save-api-btn" class="btn-sm">Save</button>
       </div>
       <div class="setting-divider"></div>
+
+      <!-- Actions -->
       <button id="force-capture-btn" class="btn-sm" style="width:100%;">
-        <span class="material-icons">search</span> Force Capture Keywords
+        <span class="emoji-icon">🔎</span> Force Capture Keywords
       </button>
       <div id="capture-status" style="font-size:11px;color:#6b7280;margin-top:4px;"></div>
       <div class="setting-divider"></div>
+
+      <!-- Debug + Danger Zone -->
+      <label class="setting-row">
+        <span>🐛 Capture Debug Mode</span>
+        <input type="checkbox" id="debug-cb">
+      </label>
+      <div class="setting-divider"></div>
       <button id="clear-storage-btn" class="btn-sm btn-danger" style="width:100%;">
-        <span class="material-icons">delete_sweep</span> Clear All Data
+        <span class="emoji-icon">🧹</span> Clear All Data
       </button>
     </div>
   </div>
 
   <script src="popup.js"></script>
+  <div id="toast-container"></div>
 </body>
 </html>

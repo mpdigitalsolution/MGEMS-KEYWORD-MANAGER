@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ClientBase — Client Database Manager</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  /* ============================== TOKENS ============================== */
+  :root{
+    --bg:            #1a1c23;
+    --bg-elevated:   #22252e;
+    --bg-card:       #262933;
+    --bg-hover:      #2d313c;
+    --border:        #363a46;
+    --text:          #e8eaed;
+    --text-dim:      #9aa0ac;
+    --text-faint:    #6b7280;
+    --accent:        #4285F4;
+    --accent-dim:    #345c9c;
+    --accent-glow:   rgba(66,133,244,0.25);
+    --green:         #34a853;
+    --green-bg:      rgba(52,168,83,0.15);
+    --yellow:        #fbbc04;
+    --yellow-bg:     rgba(251,188,4,0.15);
+    --orange:        #ff8a3d;
+    --orange-bg:     rgba(255,138,61,0.15);
+    --gray:          #9aa0ac;
+    --gray-bg:       rgba(154,160,172,0.15);
+    --red:           #ea4335;
+    --red-bg:        rgba(234,67,53,0.15);
+    --radius:        10px;
+    --radius-sm:     6px;
+    --shadow:        0 2px 8px rgba(0,0,0,0.35);
+    --shadow-lg:     0 12px 32px rgba(0,0,0,0.5);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:8px; }
+  a{ color:var(--accent); text-decoration:none; }
+  button{ font-family:inherit; }
+  input,select,textarea{ font-family:inherit; }
+
+  /* ============================== LAYOUT ============================== */
+  #auth-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 30% 20%, #23283a 0%, var(--bg) 60%);
+  }
+  .auth-box{
+    width:360px; max-width:92vw; background:var(--bg-elevated); border:1px solid var(--border);
+    border-radius:var(--radius); padding:32px; box-shadow:var(--shadow-lg);
+  }
+  .auth-logo{ display:flex; align-items:center; gap:10px; margin-bottom:24px; }
+  .auth-logo .dot{ width:12px; height:12px; border-radius:3px; background:var(--accent); }
+  .auth-logo span{ font-size:18px; font-weight:600; letter-spacing:.2px; }
+  .auth-tabs{ display:flex; gap:4px; background:var(--bg-card); border-radius:var(--radius-sm); padding:4px; margin-bottom:20px; }
+  .auth-tab{ flex:1; text-align:center; padding:8px 0; border-radius:6px; cursor:pointer; color:var(--text-dim); font-weight:500; }
+  .auth-tab.active{ background:var(--accent); color:#fff; }
+  .auth-error{ background:var(--red-bg); color:#ff9d94; border:1px solid rgba(234,67,53,.3); border-radius:var(--radius-sm); padding:10px 12px; font-size:12.5px; margin-bottom:14px; display:none; }
+  .auth-error.show{ display:block; }
+
+  #app{ display:none; min-height:100vh; grid-template-columns:220px 1fr; grid-template-rows:56px 1fr; }
+  #app.visible{ display:grid; }
+
+  header.topbar{
+    grid-column:1 / -1; display:flex; align-items:center; gap:16px;
+    padding:0 18px; border-bottom:1px solid var(--border); background:var(--bg-elevated);
+    position:sticky; top:0; z-index:20;
+  }
+  .brand{ display:flex; align-items:center; gap:9px; font-weight:700; font-size:15.5px; white-space:nowrap; }
+  .brand .dot{ width:11px; height:11px; border-radius:3px; background:var(--accent); box-shadow:0 0 12px var(--accent-glow); }
+  .search-wrap{ flex:1; max-width:440px; position:relative; }
+  .search-wrap input{
+    width:100%; background:var(--bg-card); border:1px solid var(--border); border-radius:20px;
+    color:var(--text); padding:8px 14px 8px 34px; font-size:13.5px; outline:none; transition:border-color .15s;
+  }
+  .search-wrap input:focus{ border-color:var(--accent); }
+  .search-wrap svg{ position:absolute; left:11px; top:50%; transform:translateY(-50%); opacity:.5; }
+  .search-hint{
+    position:absolute; right:10px; top:50%; transform:translateY(-50%);
+    font-size:10.5px; color:var(--text-faint); border:1px solid var(--border); border-radius:4px; padding:1px 5px;
+  }
+  .topbar-spacer{ flex:1; }
+  .btn{
+    border:none; border-radius:var(--radius-sm); padding:8px 16px; font-size:13px; font-weight:600;
+    cursor:pointer; transition:filter .15s, transform .1s; white-space:nowrap;
+  }
+  .btn:active{ transform:scale(.97); }
+  .btn-primary{ background:var(--accent); color:#fff; }
+  .btn-primary:hover{ filter:brightness(1.1); }
+  .btn-ghost{ background:transparent; color:var(--text-dim); border:1px solid var(--border); }
+  .btn-ghost:hover{ background:var(--bg-hover); color:var(--text); }
+  .btn-danger{ background:var(--red-bg); color:#ff9d94; border:1px solid rgba(234,67,53,.35); }
+  .btn-danger:hover{ filter:brightness(1.15); }
+  .btn-sm{ padding:5px 11px; font-size:12px; }
+  .icon-btn{
+    width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+    background:transparent; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-dim); cursor:pointer;
+  }
+  .icon-btn:hover{ background:var(--bg-hover); color:var(--text); }
+
+  nav.sidebar{
+    border-right:1px solid var(--border); background:var(--bg-elevated); padding:14px 10px; overflow-y:auto;
+  }
+  .nav-section-label{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-faint); padding:8px 10px 6px; }
+  .nav-item{
+    display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border-radius:var(--radius-sm);
+    color:var(--text-dim); cursor:pointer; font-size:13.5px; margin-bottom:2px; transition:background .12s,color .12s;
+  }
+  .nav-item:hover{ background:var(--bg-hover); color:var(--text); }
+  .nav-item.active{ background:var(--accent-glow); color:var(--accent); font-weight:600; }
+  .nav-item .count{ font-size:11px; background:var(--bg-card); color:var(--text-faint); padding:1px 7px; border-radius:10px; }
+  .nav-item.active .count{ background:var(--accent); color:#fff; }
+  .nav-dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+
+  main.content{ padding:22px 26px 60px; overflow-y:auto; }
+  .page-header{ display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:12px; }
+  .page-title{ font-size:20px; font-weight:700; }
+  .page-sub{ color:var(--text-faint); font-size:12.5px; margin-top:2px; }
+  .toolbar{ display:flex; gap:8px; align-items:center; }
+  select.sort-select{
+    background:var(--bg-card); border:1px solid var(--border); color:var(--text-dim); border-radius:var(--radius-sm);
+    padding:7px 10px; font-size:12.5px; outline:none; cursor:pointer;
+  }
+
+  /* ============================== STATS ============================== */
+  .stats-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:22px; }
+  .stat-card{
+    background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:16px;
+    box-shadow:var(--shadow);
+  }
+  .stat-card .label{ font-size:11.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
+  .stat-card .value{ font-size:24px; font-weight:700; }
+  .stat-card .value small{ font-size:13px; color:var(--text-faint); font-weight:500; }
+
+  /* ============================== CLIENT GRID ============================== */
+  .client-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
+  .client-card{
+    background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:16px;
+    cursor:pointer; box-shadow:var(--shadow); transition:transform .12s, border-color .12s, box-shadow .12s;
+  }
+  .client-card:hover{ transform:translateY(-2px); border-color:var(--accent-dim); box-shadow:var(--shadow-lg); }
+  .client-card-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:10px; }
+  .client-card h3{ margin:0 0 3px; font-size:15px; font-weight:650; }
+  .client-card .company{ font-size:12.5px; color:var(--text-faint); }
+  .badge{
+    font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    padding:3px 9px; border-radius:20px; white-space:nowrap;
+  }
+  .badge-active{ background:var(--green-bg); color:var(--green); }
+  .badge-lead{ background:var(--yellow-bg); color:var(--yellow); }
+  .badge-inactive{ background:var(--orange-bg); color:var(--orange); }
+  .badge-archived{ background:var(--gray-bg); color:var(--gray); }
+  .badge-paused{ background:var(--orange-bg); color:var(--orange); }
+  .badge-completed{ background:var(--gray-bg); color:var(--gray); }
+  .badge-cancelled{ background:var(--red-bg); color:#ff9d94; }
+  .client-card-meta{ display:flex; gap:14px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+  .meta-chip{ font-size:12px; color:var(--text-dim); display:flex; align-items:center; gap:5px; }
+  .platform-tag{
+    font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; text-transform:uppercase;
+    background:var(--accent-glow); color:var(--accent);
+  }
+  .empty-state{
+    text-align:center; padding:70px 20px; color:var(--text-faint);
+  }
+  .empty-state .big{ font-size:34px; margin-bottom:10px; }
+  .empty-state .title{ color:var(--text-dim); font-size:15px; font-weight:600; margin-bottom:4px; }
+
+  /* Skeletons */
+  .skeleton{ background:linear-gradient(90deg,var(--bg-card) 25%,var(--bg-hover) 37%,var(--bg-card) 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; border-radius:var(--radius); }
+  @keyframes sk{ 0%{background-position:100% 50%;} 100%{background-position:0 50%;} }
+  .skeleton-card{ height:118px; }
+
+  .pagination{ display:flex; justify-content:center; align-items:center; gap:10px; margin-top:24px; color:var(--text-dim); font-size:13px; }
+
+  /* ============================== DETAIL VIEW ============================== */
+  .detail-back{ display:flex; align-items:center; gap:6px; color:var(--text-dim); cursor:pointer; font-size:13px; margin-bottom:14px; width:fit-content; }
+  .detail-back:hover{ color:var(--text); }
+  .detail-header{
+    display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:18px; flex-wrap:wrap;
+  }
+  .detail-header h1{ font-size:22px; margin:0 0 4px; }
+  .detail-header .sub{ color:var(--text-faint); font-size:13px; }
+  .detail-header .actions{ display:flex; gap:8px; }
+
+  .tabs{ display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:18px; }
+  .tab{ padding:9px 16px; font-size:13.5px; color:var(--text-dim); cursor:pointer; border-bottom:2px solid transparent; font-weight:500; }
+  .tab:hover{ color:var(--text); }
+  .tab.active{ color:var(--accent); border-color:var(--accent); }
+
+  .info-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:20px; }
+  .info-item{ background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px; }
+  .info-item .k{ font-size:11px; text-transform:uppercase; color:var(--text-faint); letter-spacing:.04em; margin-bottom:4px; }
+  .info-item .v{ font-size:13.5px; color:var(--text); word-break:break-word; }
+  .notes-box{ background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; font-size:13px; color:var(--text-dim); line-height:1.55; white-space:pre-wrap; }
+
+  .list-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--bg-card);
+    border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:9px;
+  }
+  .list-row.primary{ border-color:var(--accent-dim); box-shadow:0 0 0 1px var(--accent-glow) inset; }
+  .list-row-main{ display:flex; flex-direction:column; gap:3px; }
+  .list-row-main .name{ font-weight:600; font-size:13.5px; }
+  .list-row-main .sub{ font-size:12px; color:var(--text-faint); }
+  .list-row-right{ display:flex; align-items:center; gap:10px; }
+
+  .primary-star{ color:var(--yellow); font-size:11px; font-weight:700; }
+
+  /* Timeline */
+  .timeline{ position:relative; padding-left:26px; }
+  .timeline::before{ content:''; position:absolute; left:9px; top:4px; bottom:4px; width:2px; background:var(--border); }
+  .tl-item{ position:relative; margin-bottom:16px; }
+  .tl-dot{
+    position:absolute; left:-26px; top:2px; width:20px; height:20px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:11px; background:var(--bg-card); border:1px solid var(--border);
+  }
+  .tl-body{ background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 13px; }
+  .tl-head{ display:flex; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .tl-type{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--accent); }
+  .tl-time{ font-size:11px; color:var(--text-faint); }
+  .tl-content{ font-size:13px; color:var(--text-dim); line-height:1.5; }
+  .tl-by{ font-size:11px; color:var(--text-faint); margin-top:5px; }
+
+  .quick-add{ display:flex; gap:8px; margin-bottom:18px; }
+  .quick-add select{ background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:var(--radius-sm); padding:9px 10px; font-size:13px; outline:none; }
+  .quick-add input{ flex:1; background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:var(--radius-sm); padding:9px 12px; font-size:13px; outline:none; }
+  .quick-add input:focus, .quick-add select:focus{ border-color:var(--accent); }
+
+  /* ============================== MODAL ============================== */
+  .overlay{
+    position:fixed; inset:0; background:rgba(10,11,15,.65); backdrop-filter:blur(2px);
+    display:none; align-items:flex-start; justify-content:center; padding:40px 16px; z-index:100; overflow-y:auto;
+  }
+  .overlay.show{ display:flex; }
+  .modal{
+    background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius);
+    width:520px; max-width:100%; box-shadow:var(--shadow-lg); animation:pop .16s ease;
+  }
+  @keyframes pop{ from{ opacity:0; transform:translateY(-8px) scale(.98);} to{ opacity:1; transform:none; } }
+  .modal-head{ display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border); }
+  .modal-head h2{ font-size:15.5px; margin:0; }
+  .modal-close{ cursor:pointer; color:var(--text-faint); font-size:18px; line-height:1; background:none; border:none; }
+  .modal-close:hover{ color:var(--text); }
+  .modal-body{ padding:18px 20px; max-height:70vh; overflow-y:auto; }
+  .modal-foot{ display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid var(--border); }
+
+  .form-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+  .form-row.full{ grid-template-columns:1fr; }
+  .field label{ display:block; font-size:12px; color:var(--text-dim); margin-bottom:5px; font-weight:500; }
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--bg-card); border:1px solid var(--border); color:var(--text);
+    border-radius:var(--radius-sm); padding:9px 11px; font-size:13px; outline:none; transition:border-color .12s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--accent); }
+  .field textarea{ resize:vertical; min-height:70px; }
+  .field-error{ color:#ff9d94; font-size:11px; margin-top:4px; display:none; }
+  .field.invalid input, .field.invalid select, .field.invalid textarea{ border-color:var(--red); }
+  .field.invalid .field-error{ display:block; }
+
+  /* Toasts */
+  #toast-stack{ position:fixed; bottom:20px; right:20px; display:flex; flex-direction:column; gap:8px; z-index:200; }
+  .toast{
+    background:var(--bg-elevated); border:1px solid var(--border); border-left:3px solid var(--accent);
+    border-radius:var(--radius-sm); padding:11px 16px; font-size:13px; box-shadow:var(--shadow-lg);
+    min-width:220px; animation:pop .15s ease;
+  }
+  .toast.error{ border-left-color:var(--red); }
+  .toast.success{ border-left-color:var(--green); }
+
+  .spinner{
+    width:14px; height:14px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%;
+    display:inline-block; animation:spin .6s linear infinite; vertical-align:-2px; margin-right:6px;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .hidden{ display:none !important; }
+
+  /* Responsive */
+  @media (max-width:820px){
+    #app{ grid-template-columns:1fr; }
+    nav.sidebar{
+      position:fixed; left:0; top:56px; bottom:0; width:220px; transform:translateX(-100%);
+      transition:transform .18s ease; z-index:30;
+    }
+    nav.sidebar.open{ transform:translateX(0); }
+    .search-wrap{ max-width:none; }
+    .brand span{ display:none; }
+  }
+  @media (max-width:460px){
+    main.content{ padding:14px 12px 50px; }
+    .form-row{ grid-template-columns:1fr; }
+    .modal{ width:100%; }
+    .search-hint{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================== AUTH SCREEN ============================== -->
+<div id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-logo"><div class="dot"></div><span>ClientBase</span></div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" data-mode="signin">Sign in</div>
+      <div class="auth-tab" data-mode="signup">Sign up</div>
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+    <form id="auth-form">
+      <div class="field" style="margin-bottom:12px;">
+        <label>Email</label>
+        <input type="email" id="auth-email" required placeholder="you@agency.com" />
+      </div>
+      <div class="field" style="margin-bottom:16px;">
+        <label>Password</label>
+        <input type="password" id="auth-password" required placeholder="••••••••" minlength="6" />
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;" id="auth-submit">Sign in</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============================== APP ============================== -->
+<div id="app">
+  <header class="topbar">
+    <button class="icon-btn hidden" id="sidebar-toggle" style="display:none;">☰</button>
+    <div class="brand"><div class="dot"></div><span>ClientBase</span></div>
+    <div class="search-wrap">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="search-input" placeholder="Search clients or company..." />
+      <span class="search-hint">/</span>
+    </div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-ghost btn-sm" id="export-csv-btn">Export CSV</button>
+    <button class="icon-btn" id="signout-btn" title="Sign out">⏻</button>
+    <button class="btn btn-primary" id="add-client-btn">+ Add Client</button>
+  </header>
+
+  <nav class="sidebar" id="sidebar">
+    <div class="nav-section-label">Dashboard</div>
+    <div class="nav-item active" data-filter="all"><span>📋 All Clients</span><span class="count" id="count-all">0</span></div>
+    <div class="nav-section-label">By Status</div>
+    <div class="nav-item" data-filter="active"><span><span class="nav-dot" style="background:var(--green)"></span> &nbsp;Active</span><span class="count" id="count-active">0</span></div>
+    <div class="nav-item" data-filter="lead"><span><span class="nav-dot" style="background:var(--yellow)"></span> &nbsp;Leads</span><span class="count" id="count-lead">0</span></div>
+    <div class="nav-item" data-filter="inactive"><span><span class="nav-dot" style="background:var(--orange)"></span> &nbsp;Paused</span><span class="count" id="count-inactive">0</span></div>
+    <div class="nav-item" data-filter="archived"><span><span class="nav-dot" style="background:var(--gray)"></span> &nbsp;Archived</span><span class="count" id="count-archived">0</span></div>
+  </nav>
+
+  <main class="content" id="content">
+    <!-- rendered dynamically -->
+  </main>
+</div>
+
+<!-- ============================== ADD/EDIT CLIENT MODAL ============================== -->
+<div class="overlay" id="client-modal-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="client-modal-title">Add Client</h2>
+      <button class="modal-close" data-close>&times;</button>
+    </div>
+    <form id="client-form">
+      <div class="modal-body">
+        <div class="form-row full">
+          <div class="field" id="f-name">
+            <label>Name *</label>
+            <input type="text" id="in-name" placeholder="Jane Cooper" />
+            <div class="field-error">Name is required</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" id="f-email">
+            <label>Email *</label>
+            <input type="email" id="in-email" placeholder="jane@company.com" />
+            <div class="field-error">Valid email required</div>
+          </div>
+          <div class="field" id="f-phone">
+            <label>Phone</label>
+            <input type="text" id="in-phone" placeholder="+63 900 000 0000" />
+            <div class="field-error">Invalid phone number</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" id="f-company">
+            <label>Company *</label>
+            <input type="text" id="in-company" placeholder="Acme HVAC" />
+            <div class="field-error">Company is required</div>
+          </div>
+          <div class="field" id="f-website">
+            <label>Website</label>
+            <input type="text" id="in-website" placeholder="acmehvac.com" />
+            <div class="field-error">Invalid website</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" id="f-industry">
+            <label>Industry</label>
+            <input type="text" id="in-industry" placeholder="HVAC, Plumbing, Nonprofit..." />
+          </div>
+          <div class="field" id="f-status">
+            <label>Status *</label>
+            <select id="in-status">
+              <option value="lead">Lead</option>
+              <option value="active">Active</option>
+              <option value="inactive">Paused</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="field" id="f-source">
+            <label>Source</label>
+            <select id="in-source">
+              <option value="">— Select source —</option>
+              <option value="referral">Referral</option>
+              <option value="google">Google</option>
+              <option value="facebook">Facebook</option>
+              <option value="direct">Direct</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="field" id="f-notes">
+            <label>Notes</label>
+            <textarea id="in-notes" placeholder="Anything worth remembering about this client..."></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary" id="client-submit-btn">Save Client</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============================== ADD PROJECT MODAL ============================== -->
+<div class="overlay" id="project-modal-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Add Project</h2>
+      <button class="modal-close" data-close>&times;</button>
+    </div>
+    <form id="project-form">
+      <div class="modal-body">
+        <div class="form-row full">
+          <div class="field" id="pf-client">
+            <label>Client *</label>
+            <select id="pin-client"></select>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="field" id="pf-name">
+            <label>Project Name *</label>
+            <input type="text" id="pin-name" placeholder="Google Ads — Search Campaign" />
+            <div class="field-error">Project name is required</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" id="pf-budget">
+            <label>Total Budget ($) *</label>
+            <input type="number" id="pin-budget" min="0" step="0.01" placeholder="5000" />
+            <div class="field-error">Enter a valid budget</div>
+          </div>
+          <div class="field" id="pf-spend">
+            <label>Monthly Spend ($)</label>
+            <input type="number" id="pin-spend" min="0" step="0.01" placeholder="1500" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" id="pf-status">
+            <label>Status *</label>
+            <select id="pin-status">
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div class="field" id="pf-platform">
+            <label>Platform *</label>
+            <select id="pin-platform">
+              <option value="google_ads">Google Ads</option>
+              <option value="meta">Meta</option>
+              <option value="both">Both</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" id="pf-start">
+            <label>Start Date</label>
+            <input type="date" id="pin-start" />
+          </div>
+          <div class="field" id="pf-end">
+            <label>End Date</label>
+            <input type="date" id="pin-end" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary" id="project-submit-btn">Save Project</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast-stack"></div>
+
+<script>
+/* ==========================================================================
+   CONFIG — replace with your Supabase project credentials
+   ========================================================================== */
+const SUPABASE_URL = 'https://YOUR_PROJECT_REF.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ==========================================================================
+   STATE
+   ========================================================================== */
+const state = {
+  session: null,
+  clients: [],          // full loaded set (client + aggregate counts)
+  filter: 'all',
+  search: '',
+  sort: 'name_asc',
+  page: 1,
+  pageSize: 12,
+  view: 'list',          // 'list' | 'detail'
+  activeClientId: null,
+  activeTab: 'overview',
+  detailData: null,       // { client, projects, contacts, activities }
+  editingClientId: null,
+  activityChannel: null,
+};
+
+const STATUS_LABEL = { active:'Active', lead:'Lead', inactive:'Paused', archived:'Archived' };
+const PLATFORM_LABEL = { google_ads:'Google Ads', meta:'Meta', both:'Google + Meta' };
+const ACTIVITY_ICON = { call:'📞', email:'✉️', meeting:'🗓️', note:'📝' };
+
+/* ==========================================================================
+   UTIL
+   ========================================================================== */
+function $(sel, root=document){ return root.querySelector(sel); }
+function $all(sel, root=document){ return [...root.querySelectorAll(sel)]; }
+function esc(str){
+  if(str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function money(n){
+  n = Number(n) || 0;
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits:0, maximumFractionDigits:0 });
+}
+function fmtDate(d){
+  if(!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+function fmtDateTime(d){
+  if(!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' · ' +
+         dt.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+}
+function toast(msg, type='info'){
+  const el = document.createElement('div');
+  el.className = 'toast' + (type==='error' ? ' error' : type==='success' ? ' success' : '');
+  el.textContent = msg;
+  document.getElementById('toast-stack').appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .25s'; setTimeout(()=>el.remove(),250); }, 3200);
+}
+function debounce(fn, ms){
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), ms); };
+}
+function badgeClass(status){ return 'badge badge-' + status; }
+
+/* ==========================================================================
+   AUTH
+   ========================================================================== */
+let authMode = 'signin';
+
+$all('.auth-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    authMode = tab.dataset.mode;
+    $all('.auth-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    $('#auth-submit').textContent = authMode === 'signin' ? 'Sign in' : 'Create account';
+    $('#auth-error').classList.remove('show');
+  });
+});
+
+$('#auth-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('#auth-email').value.trim();
+  const password = $('#auth-password').value;
+  const btn = $('#auth-submit');
+  const errEl = $('#auth-error');
+  errEl.classList.remove('show');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Please wait…';
+  try{
+    let result;
+    if(authMode === 'signin'){
+      result = await sb.auth.signInWithPassword({ email, password });
+    } else {
+      result = await sb.auth.signUp({ email, password });
+    }
+    if(result.error) throw result.error;
+    if(authMode === 'signup' && !result.data.session){
+      toast('Account created — check your email to confirm, then sign in.', 'success');
+      btn.disabled = false; btn.textContent = 'Create account';
+      return;
+    }
+    onAuthed(result.data.session);
+  }catch(err){
+    errEl.textContent = err.message || 'Something went wrong.';
+    errEl.classList.add('show');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = authMode === 'signin' ? 'Sign in' : 'Create account';
+  }
+});
+
+$('#signout-btn').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  if(state.activityChannel) sb.removeChannel(state.activityChannel);
+  state.session = null;
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('auth-screen').style.display = 'flex';
+});
+
+async function onAuthed(session){
+  state.session = session;
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  await loadClients();
+  subscribeRealtime();
+}
+
+async function checkSession(){
+  const { data } = await sb.auth.getSession();
+  if(data.session){
+    onAuthed(data.session);
+  }
+}
+checkSession();
+
+/* ==========================================================================
+   DATA LOADING
+   ========================================================================== */
+async function loadClients(){
+  state.view = 'list';
+  renderShell();
+  renderSkeletons();
+  try{
+    const { data: clients, error } = await sb
+      .from('clients')
+      .select('*, projects(id, status, monthly_spend)')
+      .order('created_at', { ascending:false });
+    if(error) throw error;
+    state.clients = clients || [];
+    renderShell();
+  }catch(err){
+    console.error(err);
+    toast('Failed to load clients: ' + err.message, 'error');
+    $('#content').innerHTML = `<div class="empty-state"><div class="big">⚠️</div><div class="title">Couldn't load clients</div><div>${esc(err.message)}</div></div>`;
+  }
+}
+
+function subscribeRealtime(){
+  if(state.activityChannel) sb.removeChannel(state.activityChannel);
+  state.activityChannel = sb.channel('activities-feed')
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'activities' }, (payload) => {
+      if(state.view === 'detail' && state.activeClientId === payload.new.client_id){
+        loadClientDetail(state.activeClientId, true);
+      }
+    })
+    .subscribe();
+}
+
+/* ==========================================================================
+   DERIVED / FILTER / SORT / PAGINATE
+   ========================================================================== */
+function getFilteredClients(){
+  let list = [...state.clients];
+  if(state.filter !== 'all'){
+    list = list.filter(c => c.status === state.filter);
+  }
+  if(state.search.trim()){
+    const q = state.search.trim().toLowerCase();
+    list = list.filter(c =>
+      (c.name||'').toLowerCase().includes(q) ||
+      (c.company||'').toLowerCase().includes(q)
+    );
+  }
+  switch(state.sort){
+    case 'name_asc': list.sort((a,b)=>(a.name||'').localeCompare(b.name||'')); break;
+    case 'name_desc': list.sort((a,b)=>(b.name||'').localeCompare(a.name||'')); break;
+    case 'date_desc': list.sort((a,b)=> new Date(b.created_at) - new Date(a.created_at)); break;
+    case 'date_asc': list.sort((a,b)=> new Date(a.created_at) - new Date(b.created_at)); break;
+    case 'budget_desc': list.sort((a,b)=> totalSpend(b) - totalSpend(a)); break;
+    case 'budget_asc': list.sort((a,b)=> totalSpend(a) - totalSpend(b)); break;
+  }
+  return list;
+}
+function totalSpend(client){
+  return (client.projects||[]).reduce((sum,p)=> sum + (Number(p.monthly_spend)||0), 0);
+}
+function activeProjectCount(client){
+  return (client.projects||[]).filter(p=>p.status==='active').length;
+}
+function updateCounts(){
+  const counts = { all: state.clients.length, active:0, lead:0, inactive:0, archived:0 };
+  state.clients.forEach(c => { if(counts[c.status] !== undefined) counts[c.status]++; });
+  Object.keys(counts).forEach(k => { const el = document.getElementById('count-'+k); if(el) el.textContent = counts[k]; });
+}
+
+/* ==========================================================================
+   RENDER: SHELL / LIST
+   ========================================================================== */
+function renderShell(){
+  updateCounts();
+  if(state.view === 'detail'){ renderDetailView(); return; }
+
+  const filtered = getFilteredClients();
+  const totalPages = Math.max(1, Math.ceil(filtered.length / state.pageSize));
+  state.page = Math.min(state.page, totalPages);
+  const start = (state.page - 1) * state.pageSize;
+  const pageItems = filtered.slice(start, start + state.pageSize);
+
+  const totalBudget = state.clients.reduce((s,c)=> s + (c.projects||[]).reduce((ps,p)=> ps + (Number(p.budget)||0), 0), 0);
+  const activeProjects = state.clients.reduce((s,c)=> s + activeProjectCount(c), 0);
+
+  const filterLabel = state.filter === 'all' ? 'All Clients' : STATUS_LABEL[state.filter];
+
+  let html = `
+    <div class="page-header">
+      <div>
+        <div class="page-title">${filterLabel}</div>
+        <div class="page-sub">${filtered.length} client${filtered.length===1?'':'s'}</div>
+      </div>
+      <div class="toolbar">
+        <select class="sort-select" id="sort-select">
+          <option value="name_asc" ${state.sort==='name_asc'?'selected':''}>Name (A→Z)</option>
+          <option value="name_desc" ${state.sort==='name_desc'?'selected':''}>Name (Z→A)</option>
+          <option value="date_desc" ${state.sort==='date_desc'?'selected':''}>Newest first</option>
+          <option value="date_asc" ${state.sort==='date_asc'?'selected':''}>Oldest first</option>
+          <option value="budget_desc" ${state.sort==='budget_desc'?'selected':''}>Spend (high→low)</option>
+          <option value="budget_asc" ${state.sort==='budget_asc'?'selected':''}>Spend (low→high)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="label">Total Clients</div><div class="value">${state.clients.length}</div></div>
+      <div class="stat-card"><div class="label">Total Budget</div><div class="value">${money(totalBudget)}</div></div>
+      <div class="stat-card"><div class="label">Active Projects</div><div class="value">${activeProjects}</div></div>
+      <div class="stat-card"><div class="label">Active Clients</div><div class="value">${state.clients.filter(c=>c.status==='active').length} <small>/ ${state.clients.length}</small></div></div>
+    </div>
+  `;
+
+  if(pageItems.length === 0){
+    html += `<div class="empty-state"><div class="big">🗂️</div><div class="title">No clients here yet</div><div>Try a different filter, or add your first client.</div></div>`;
+  } else {
+    html += `<div class="client-grid">` + pageItems.map(clientCardHTML).join('') + `</div>`;
+    if(totalPages > 1){
+      html += `
+        <div class="pagination">
+          <button class="btn btn-ghost btn-sm" id="prev-page" ${state.page<=1?'disabled':''}>← Prev</button>
+          <span>Page ${state.page} of ${totalPages}</span>
+          <button class="btn btn-ghost btn-sm" id="next-page" ${state.page>=totalPages?'disabled':''}>Next →</button>
+        </div>`;
+    }
+  }
+
+  $('#content').innerHTML = html;
+
+  const sortSel = $('#sort-select');
+  if(sortSel) sortSel.addEventListener('change', e => { state.sort = e.target.value; renderShell(); });
+  const prevBtn = $('#prev-page'); if(prevBtn) prevBtn.addEventListener('click', ()=>{ state.page--; renderShell(); });
+  const nextBtn = $('#next-page'); if(nextBtn) nextBtn.addEventListener('click', ()=>{ state.page++; renderShell(); });
+  $all('.client-card').forEach(card => {
+    card.addEventListener('click', () => openClientDetail(card.dataset.id));
+  });
+}
+
+function clientCardHTML(c){
+  const projCount = (c.projects||[]).length;
+  const spend = totalSpend(c);
+  return `
+    <div class="client-card" data-id="${c.id}">
+      <div class="client-card-top">
+        <div>
+          <h3>${esc(c.name)}</h3>
+          <div class="company">${esc(c.company || '—')}</div>
+        </div>
+        <span class="${badgeClass(c.status)}">${STATUS_LABEL[c.status] || c.status}</span>
+      </div>
+      <div class="client-card-meta">
+        <div class="meta-chip">📁 ${projCount} project${projCount===1?'':'s'}</div>
+        <div class="meta-chip">💵 ${money(spend)}/mo</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSkeletons(){
+  $('#content').innerHTML = `
+    <div class="stats-row">
+      ${Array(4).fill('<div class="skeleton" style="height:70px;"></div>').join('')}
+    </div>
+    <div class="client-grid">
+      ${Array(6).fill('<div class="skeleton skeleton-card"></div>').join('')}
+    </div>
+  `;
+}
+
+/* Sidebar filters */
+$all('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    $all('.nav-item').forEach(i=>i.classList.remove('active'));
+    item.classList.add('active');
+    state.filter = item.dataset.filter;
+    state.page = 1;
+    renderShell();
+    if(window.innerWidth <= 820) $('#sidebar').classList.remove('open');
+  });
+});
+
+/* Search */
+const doSearch = debounce((val) => { state.search = val; state.page = 1; renderShell(); }, 300);
+$('#search-input').addEventListener('input', (e) => doSearch(e.target.value));
+
+/* Keyboard shortcuts */
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+  if(e.key === '/' && !typing){
+    e.preventDefault();
+    $('#search-input').focus();
+  }
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n'){
+    e.preventDefault();
+    openClientModal();
+  }
+  if(e.key === 'Escape'){
+    $all('.overlay.show').forEach(o => o.classList.remove('show'));
+  }
+});
+
+/* ==========================================================================
+   CSV EXPORT
+   ========================================================================== */
+$('#export-csv-btn').addEventListener('click', () => {
+  const rows = getFilteredClients();
+  if(rows.length === 0){ toast('Nothing to export for this view.'); return; }
+  const headers = ['Name','Email','Phone','Company','Website','Industry','Status','Source','Projects','Monthly Spend','Created At'];
+  const lines = [headers.join(',')];
+  rows.forEach(c => {
+    const line = [
+      c.name, c.email, c.phone, c.company, c.website, c.industry,
+      STATUS_LABEL[c.status]||c.status, c.source, (c.projects||[]).length, totalSpend(c), c.created_at
+    ].map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',');
+    lines.push(line);
+  });
+  const blob = new Blob([lines.join('\n')], { type:'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `clients-export-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('CSV exported.', 'success');
+});
+
+/* ==========================================================================
+   CLIENT MODAL (ADD / EDIT)
+   ========================================================================== */
+function openClientModal(client=null){
+  state.editingClientId = client ? client.id : null;
+  $('#client-modal-title').textContent = client ? 'Edit Client' : 'Add Client';
+  $('#in-name').value = client?.name || '';
+  $('#in-email').value = client?.email || '';
+  $('#in-phone').value = client?.phone || '';
+  $('#in-company').value = client?.company || '';
+  $('#in-website').value = client?.website || '';
+  $('#in-industry').value = client?.industry || '';
+  $('#in-status').value = client?.status || 'lead';
+  $('#in-source').value = client?.source || '';
+  $('#in-notes').value = client?.notes || '';
+  $all('#client-form .field').forEach(f=>f.classList.remove('invalid'));
+  $('#client-modal-overlay').classList.add('show');
+  setTimeout(()=>$('#in-name').focus(), 50);
+}
+$('#add-client-btn').addEventListener('click', () => openClientModal());
+
+function validateClientForm(){
+  let valid = true;
+  const name = $('#in-name').value.trim();
+  const email = $('#in-email').value.trim();
+  const phone = $('#in-phone').value.trim();
+  const company = $('#in-company').value.trim();
+  const website = $('#in-website').value.trim();
+
+  const setInvalid = (id, bad) => {
+    const f = $(id); f.classList.toggle('invalid', bad);
+    if(bad) valid = false;
+  };
+  setInvalid('#f-name', name.length === 0);
+  setInvalid('#f-email', email.length === 0 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  setInvalid('#f-company', company.length === 0);
+  setInvalid('#f-phone', phone.length > 0 && !/^[0-9+\-\s()]{6,20}$/.test(phone));
+  setInvalid('#f-website', website.length > 0 && !/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}.*$/.test(website.replace(/^https?:\/\//,'')));
+  return valid;
+}
+
+$('#client-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if(!validateClientForm()) return;
+  const btn = $('#client-submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Saving…';
+
+  const payload = {
+    name: $('#in-name').value.trim(),
+    email: $('#in-email').value.trim(),
+    phone: $('#in-phone').value.trim() || null,
+    company: $('#in-company').value.trim(),
+    website: $('#in-website').value.trim() || null,
+    industry: $('#in-industry').value.trim() || null,
+    status: $('#in-status').value,
+    source: $('#in-source').value || null,
+    notes: $('#in-notes').value.trim() || null,
+  };
+
+  try{
+    if(state.editingClientId){
+      const { error } = await sb.from('clients').update(payload).eq('id', state.editingClientId);
+      if(error) throw error;
+      toast('Client updated.', 'success');
+    } else {
+      payload.user_id = state.session.user.id;
+      const { error } = await sb.from('clients').insert(payload);
+      if(error) throw error;
+      toast('Client added.', 'success');
+    }
+    $('#client-modal-overlay').classList.remove('show');
+    await loadClients();
+    if(state.editingClientId && state.view === 'detail'){
+      loadClientDetail(state.editingClientId);
+    }
+  }catch(err){
+    console.error(err);
+    toast('Save failed: ' + err.message, 'error');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Save Client';
+  }
+});
+
+/* ==========================================================================
+   CLIENT DETAIL VIEW
+   ========================================================================== */
+async function openClientDetail(id){
+  state.view = 'detail';
+  state.activeClientId = id;
+  state.activeTab = 'overview';
+  await loadClientDetail(id);
+}
+
+async function loadClientDetail(id, silent=false){
+  if(!silent){
+    $('#content').innerHTML = `<div class="skeleton" style="height:40px;width:160px;margin-bottom:18px;"></div><div class="skeleton" style="height:120px;margin-bottom:18px;"></div><div class="skeleton" style="height:300px;"></div>`;
+  }
+  try{
+    const [{ data: client, error: e1 }, { data: projects, error: e2 }, { data: contacts, error: e3 }, { data: activities, error: e4 }] = await Promise.all([
+      sb.from('clients').select('*').eq('id', id).single(),
+      sb.from('projects').select('*').eq('client_id', id).order('created_at', { ascending:false }),
+      sb.from('contacts').select('*').eq('client_id', id).order('is_primary', { ascending:false }),
+      sb.from('activities').select('*').eq('client_id', id).order('created_at', { ascending:false }),
+    ]);
+    if(e1) throw e1; if(e2) throw e2; if(e3) throw e3; if(e4) throw e4;
+    state.detailData = { client, projects: projects||[], contacts: contacts||[], activities: activities||[] };
+    renderDetailView();
+  }catch(err){
+    console.error(err);
+    toast('Failed to load client: ' + err.message, 'error');
+    $('#content').innerHTML = `<div class="empty-state"><div class="big">⚠️</div><div class="title">Couldn't load this client</div></div>`;
+  }
+}
+
+function renderDetailView(){
+  const { client, projects, contacts, activities } = state.detailData || {};
+  if(!client) return;
+
+  const activeCampaigns = projects.filter(p=>p.status==='active').length;
+  const monthlySpend = projects.reduce((s,p)=> s + (Number(p.monthly_spend)||0), 0);
+
+  let html = `
+    <div class="detail-back" id="back-to-list">← Back to all clients</div>
+    <div class="detail-header">
+      <div>
+        <h1>${esc(client.name)}</h1>
+        <div class="sub">${esc(client.company||'—')} · <span class="${badgeClass(client.status)}">${STATUS_LABEL[client.status]}</span></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost btn-sm" id="edit-client-btn">Edit</button>
+        <button class="btn btn-danger btn-sm" id="delete-client-btn">Delete</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab ${state.activeTab==='overview'?'active':''}" data-tab="overview">Overview</div>
+      <div class="tab ${state.activeTab==='projects'?'active':''}" data-tab="projects">Projects (${projects.length})</div>
+      <div class="tab ${state.activeTab==='contacts'?'active':''}" data-tab="contacts">Contacts (${contacts.length})</div>
+      <div class="tab ${state.activeTab==='activity'?'active':''}" data-tab="activity">Activity (${activities.length})</div>
+    </div>
+    <div id="tab-content">
+  `;
+
+  if(state.activeTab === 'overview'){
+    html += `
+      <div class="stats-row">
+        <div class="stat-card"><div class="label">Total Projects</div><div class="value">${projects.length}</div></div>
+        <div class="stat-card"><div class="label">Monthly Spend</div><div class="value">${money(monthlySpend)}</div></div>
+        <div class="stat-card"><div class="label">Active Campaigns</div><div class="value">${activeCampaigns}</div></div>
+      </div>
+      <div class="info-grid">
+        <div class="info-item"><div class="k">Email</div><div class="v">${esc(client.email||'—')}</div></div>
+        <div class="info-item"><div class="k">Phone</div><div class="v">${esc(client.phone||'—')}</div></div>
+        <div class="info-item"><div class="k">Website</div><div class="v">${client.website ? `<a href="https://${esc(client.website.replace(/^https?:\/\//,''))}" target="_blank" rel="noopener">${esc(client.website)}</a>` : '—'}</div></div>
+        <div class="info-item"><div class="k">Industry</div><div class="v">${esc(client.industry||'—')}</div></div>
+        <div class="info-item"><div class="k">Source</div><div class="v">${esc(client.source||'—')}</div></div>
+        <div class="info-item"><div class="k">Client Since</div><div class="v">${fmtDate(client.created_at)}</div></div>
+      </div>
+      <div class="notes-box">${client.notes ? esc(client.notes) : 'No notes yet.'}</div>
+    `;
+  } else if(state.activeTab === 'projects'){
+    html += `<div style="margin-bottom:14px;"><button class="btn btn-primary btn-sm" id="add-project-btn">+ Add Project</button></div>`;
+    if(projects.length === 0){
+      html += `<div class="empty-state"><div class="big">📁</div><div class="title">No projects yet</div></div>`;
+    } else {
+      html += projects.map(p => `
+        <div class="list-row">
+          <div class="list-row-main">
+            <div class="name">${esc(p.name)}</div>
+            <div class="sub">${fmtDate(p.start_date)} → ${p.end_date ? fmtDate(p.end_date) : 'Ongoing'} · ${money(p.budget)} total budget · ${money(p.monthly_spend)}/mo</div>
+          </div>
+          <div class="list-row-right">
+            <span class="platform-tag">${PLATFORM_LABEL[p.platform]||p.platform}</span>
+            <span class="${badgeClass(p.status)}">${p.status}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  } else if(state.activeTab === 'contacts'){
+    if(contacts.length === 0){
+      html += `<div class="empty-state"><div class="big">👤</div><div class="title">No contacts added</div></div>`;
+    } else {
+      html += contacts.map(c => `
+        <div class="list-row ${c.is_primary?'primary':''}">
+          <div class="list-row-main">
+            <div class="name">${esc(c.name)} ${c.is_primary?'<span class="primary-star">★ PRIMARY</span>':''}</div>
+            <div class="sub">${esc(c.role||'—')} · ${esc(c.email||'')} ${c.phone?('· '+esc(c.phone)):''}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+  } else if(state.activeTab === 'activity'){
+    html += `
+      <div class="quick-add">
+        <select id="qa-type">
+          <option value="note">📝 Note</option>
+          <option value="call">📞 Call</option>
+          <option value="email">✉️ Email</option>
+          <option value="meeting">🗓️ Meeting</option>
+        </select>
+        <input type="text" id="qa-content" placeholder="Log a quick note or update..." />
+        <button class="btn btn-primary btn-sm" id="qa-submit">Add</button>
+      </div>
+    `;
+    if(activities.length === 0){
+      html += `<div class="empty-state"><div class="big">🕓</div><div class="title">No activity logged yet</div></div>`;
+    } else {
+      html += `<div class="timeline">` + activities.map(a => `
+        <div class="tl-item">
+          <div class="tl-dot">${ACTIVITY_ICON[a.type]||'•'}</div>
+          <div class="tl-body">
+            <div class="tl-head"><span class="tl-type">${esc(a.type)}</span><span class="tl-time">${fmtDateTime(a.created_at)}</span></div>
+            <div class="tl-content">${esc(a.content)}</div>
+            ${a.created_by ? `<div class="tl-by">— ${esc(a.created_by)}</div>` : ''}
+          </div>
+        </div>
+      `).join('') + `</div>`;
+    }
+  }
+
+  html += `</div>`;
+  $('#content').innerHTML = html;
+
+  $('#back-to-list').addEventListener('click', () => { state.view = 'list'; renderShell(); });
+  $('#edit-client-btn').addEventListener('click', () => openClientModal(client));
+  $('#delete-client-btn').addEventListener('click', () => deleteClient(client.id));
+
+  $all('.tab').forEach(t => t.addEventListener('click', () => { state.activeTab = t.dataset.tab; renderDetailView(); }));
+
+  const addProjBtn = $('#add-project-btn');
+  if(addProjBtn) addProjBtn.addEventListener('click', () => openProjectModal(client.id));
+
+  const qaSubmit = $('#qa-submit');
+  if(qaSubmit){
+    qaSubmit.addEventListener('click', () => submitQuickActivity(client.id));
+    $('#qa-content').addEventListener('keydown', (e) => { if(e.key==='Enter'){ e.preventDefault(); submitQuickActivity(client.id); } });
+  }
+}
+
+async function deleteClient(id){
+  if(!confirm('Delete this client and all related projects, contacts, and activity? This cannot be undone.')) return;
+  try{
+    const { error } = await sb.from('clients').delete().eq('id', id);
+    if(error) throw error;
+    toast('Client deleted.', 'success');
+    state.view = 'list';
+    await loadClients();
+  }catch(err){
+    toast('Delete failed: ' + err.message, 'error');
+  }
+}
+
+async function submitQuickActivity(clientId){
+  const type = $('#qa-type').value;
+  const content = $('#qa-content').value.trim();
+  if(!content){ toast('Write something first.'); return; }
+  try{
+    const { error } = await sb.from('activities').insert({
+      client_id: clientId, type, content,
+      created_by: state.session?.user?.email || 'you',
+    });
+    if(error) throw error;
+    $('#qa-content').value = '';
+    await loadClientDetail(clientId, true);
+  }catch(err){
+    toast('Failed to add activity: ' + err.message, 'error');
+  }
+}
+
+/* ==========================================================================
+   PROJECT MODAL
+   ========================================================================== */
+function openProjectModal(preselectClientId=null){
+  const sel = $('#pin-client');
+  sel.innerHTML = state.clients.map(c => `<option value="${c.id}">${esc(c.name)} ${c.company?('— '+esc(c.company)):''}</option>`).join('');
+  if(preselectClientId) sel.value = preselectClientId;
+  $('#pin-name').value = '';
+  $('#pin-budget').value = '';
+  $('#pin-spend').value = '';
+  $('#pin-status').value = 'active';
+  $('#pin-platform').value = 'google_ads';
+  $('#pin-start').value = '';
+  $('#pin-end').value = '';
+  $all('#project-form .field').forEach(f=>f.classList.remove('invalid'));
+  $('#project-modal-overlay').classList.add('show');
+}
+
+function validateProjectForm(){
+  let valid = true;
+  const name = $('#pin-name').value.trim();
+  const budget = $('#pin-budget').value;
+  const setInvalid = (id, bad) => { const f=$(id); f.classList.toggle('invalid', bad); if(bad) valid=false; };
+  setInvalid('#pf-name', name.length===0);
+  setInvalid('#pf-budget', budget === '' || isNaN(budget) || Number(budget) < 0);
+  return valid;
+}
+
+$('#project-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if(!validateProjectForm()) return;
+  const btn = $('#project-submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Saving…';
+  const payload = {
+    client_id: $('#pin-client').value,
+    name: $('#pin-name').value.trim(),
+    budget: Number($('#pin-budget').value) || 0,
+    monthly_spend: Number($('#pin-spend').value) || 0,
+    status: $('#pin-status').value,
+    platform: $('#pin-platform').value,
+    start_date: $('#pin-start').value || null,
+    end_date: $('#pin-end').value || null,
+  };
+  try{
+    const { error } = await sb.from('projects').insert(payload);
+    if(error) throw error;
+    toast('Project added.', 'success');
+    $('#project-modal-overlay').classList.remove('show');
+    await loadClients();
+    if(state.view === 'detail' && state.activeClientId === payload.client_id){
+      await loadClientDetail(payload.client_id, true);
+    }
+  }catch(err){
+    toast('Save failed: ' + err.message, 'error');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Save Project';
+  }
+});
+
+/* ==========================================================================
+   MODAL DISMISS
+   ========================================================================== */
+$all('[data-close]').forEach(el => {
+  el.addEventListener('click', () => el.closest('.overlay').classList.remove('show'));
+});
+$all('.overlay').forEach(ov => {
+  ov.addEventListener('click', (e) => { if(e.target === ov) ov.classList.remove('show'); });
+});
+</script>
+</body>
+</html>

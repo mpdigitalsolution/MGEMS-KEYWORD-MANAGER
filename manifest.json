@@ -19,7 +19,8 @@
     "clipboardWrite",
     "notifications",
     "contextMenus",
-    "downloads"
+    "downloads",
+    "windows"
   ],
   "host_permissions": [
     "https://ads.google.com/*",
@@ -30,7 +31,6 @@
     "service_worker": "background_scripts/background.js"
   },
   "action": {
-    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -46,5 +46,9 @@
       "css": ["content_scripts/content.css", "content_scripts/keywordPlanner.css"],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "web_accessible_resources": [{
+    "resources": ["popup/popup.html", "popup/popup.js", "popup/popup.css"],
+    "matches": ["<all_urls>"]
+  }]
 }

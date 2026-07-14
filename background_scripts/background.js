@@ -26,7 +26,21 @@ async function refreshKeywordBadgeFromStorage() {
   }
 }
 
-// Initialize on install
+// Open as draggable window on extension click
+chrome.action.onClicked.addListener(() => {
+  chrome.windows.getLastFocused((win) => {
+    chrome.windows.create({
+      url: chrome.runtime.getURL('popup/popup.html'),
+      type: 'popup',
+      width: 420,
+      height: 620,
+      left: win ? win.left + 60 : 100,
+      top: win ? win.top + 60 : 100
+    });
+  });
+});
+
+// Init on install
 chrome.runtime.onInstalled.addListener(() => {
   setupContextMenu();
   refreshKeywordBadgeFromStorage();

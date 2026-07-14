@@ -108,6 +108,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize
   loadSettings();
   updateKeywordsList();
+  // Add ripple to key buttons
+  document.querySelectorAll(".btn-primary, .btn-sm, .mt-btn, .tab, .theme-btn").forEach(b => b.classList.add("ripple"));
   restoreSavedData();
   initializeCSVUpload();
   initializeKeywordPerformanceOptimizer();
@@ -550,7 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         row.innerHTML = `
           <button class="planner-add-btn" title="Add to keyword list" data-keyword="${k.keyword.replace(/"/g, '&quot;')}">
-            <span class="material-icons">add_circle</span>
+            <span class="emoji-icon">➕</span>
           </button>
           <div style="flex:1;min-width:0;">
             <div class="pk-term">${k.keyword}</div>
@@ -575,7 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
           try {
             const result = await addKeywordToStorage(keywordObject);
             if (result.added) {
-              addBtn.innerHTML = '<span class="material-icons" style="color:#2e7d32;">check_circle</span>';
+              addBtn.innerHTML = '<span class="emoji-icon" style="color:#22c55e;">✅</span>';
               showNotification('Success', `Added "${keywordText}"`);
               updateKeywordsList();
             } else if (result.duplicate) {
@@ -585,7 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification('Error', 'Failed to add keyword');
           }
           setTimeout(() => {
-            addBtn.innerHTML = '<span class="material-icons">add_circle</span>';
+            addBtn.innerHTML = '<span class="emoji-icon">➕</span>';
           }, 2000);
         });
         
@@ -616,6 +618,62 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function capitalizeWords(str) {
     return str.replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  function parsePerformanceCSV(csvText) {
+    const lines = csvText.split('\n');
+    if (lines.length < 2) return [];
+
+    // Detect delimiter (tab vs comma)
+    const firstLine = lines[0];
+    const delimiter = firstLine.includes('\t') ? '\t' : ',';
+
+    const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+
+    const colMap = {
+      keyword: headers.findIndex(h => h === 'keyword' || h === 'search term' || h === 'search term (text only)'),
+      clicks: headers.findIndex(h => h === 'clicks'),
+      cost: headers.findIndex(h => h === 'cost'),
+      conversions: headers.findIndex(h => h === 'conversions' || h === 'conv.')
+    };
+
+    if (colMap.keyword === -1 || colMap.clicks === -1) return [];
+
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      let columns;
+      if (delimiter === '\t') {
+        columns = line.split('\t');
+      } else {
+        columns = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
+      }
+
+      const maxIdx = Math.max(colMap.keyword, colMap.clicks, colMap.cost, colMap.conversions);
+      if (columns.length <= maxIdx) continue;
+
+      const keyword = columns[colMap.keyword].trim().replace(/^"|"$/g, '');
+      if (!keyword) continue;
+
+      data.push({
+        keyword,
+        clicks: parseInt(columns[colMap.clicks]?.replace(/[^0-9]/g, '')) || 0,
+        cost: parseFloat(columns[colMap.cost]?.replace(/[^0-9.]/g, '')) || 0,
+        conversions: parseInt(columns[colMap.conversions]?.replace(/[^0-9]/g, '')) || 0,
+        cpc: colMap.cost !== -1 && colMap.clicks !== -1
+          ? (parseFloat(columns[colMap.cost]?.replace(/[^0-9.]/g, '')) || 0) / (parseInt(columns[colMap.clicks]?.replace(/[^0-9]/g, '')) || 1)
+          : 0
+      });
+    }
+    return data;
+  }
+
+  function resetPerformanceUpload() {
+    performanceUploadProgress.classList.add('hidden');
+    performanceUploadZone.classList.remove('hidden');
+    performanceCsvFileInput.value = '';
   }
 
   function resetPlannerUpload() {
@@ -673,9 +731,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    performanceFileName.textContent = file.name;
-    performanceFileSize.textContent = formatFileSize(file.size);
-    performanceFileInfo.classList.remove('hidden');
     performanceUploadZone.classList.add('hidden');
     
     processPerformanceCSV(file);
@@ -1376,8 +1431,24 @@ Be thorough — check every keyword. If none match, return empty array.`
       if (result.deepseekApiKey) {
         deepseekApiKeyInput.value = result.deepseekApiKey;
       }
-      applySettings();
+      // Load theme
+      const savedTheme = result.theme || 'google-ads';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.themeVal === savedTheme);
+      });
     });
+    // Theme switcher
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const theme = btn.dataset.themeVal;
+        document.documentElement.setAttribute('data-theme', theme);
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        chrome.storage.local.set({ theme });
+      });
+    });
+    applySettings();
   }
 
   function saveSettings() {
@@ -1457,19 +1528,39 @@ Be thorough — check every keyword. If none match, return empty array.`
       const countBar = document.getElementById('count-bar');
       const countText = document.getElementById('kw-count');
       if (countBar && countText) {
-        countText.textContent = `Total Keywords: ${keywords.length}`;
+        // Animated counter
+        const target = keywords.length;
+        countText.innerHTML = 'Total Keywords: <span class="count-num" id="kw-count-num">0</span>';
+        const numEl = document.getElementById('kw-count-num');
+        if (numEl) {
+          const duration = Math.min(600, target * 20);
+          const start = performance.now();
+          function update(now) {
+            const elapsed = now - start;
+            const progress = Math.min(1, elapsed / duration);
+            const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+            numEl.textContent = Math.floor(eased * target);
+            if (progress < 1) requestAnimationFrame(update);
+            else numEl.textContent = target;
+          }
+          requestAnimationFrame(update);
+        }
         if (keywords.length > 0) {
           countBar.classList.remove('hidden');
+          document.getElementById('empty-state-kw').classList.add('hidden');
         } else {
           countBar.classList.add('hidden');
+          document.getElementById('empty-state-kw').classList.remove('hidden');
         }
       }
 
       if (keywords.length > 0) {
         // Create a copy and reverse it for display
-        [...keywords].reverse().forEach((keyword) => {
+        [...keywords].reverse().forEach((keyword, idx) => {
           const keywordItem = document.createElement('div');
           keywordItem.className = 'kw-item stagger-item';
+          keywordItem.style.setProperty('--i', idx);
+          keywordItem.style.animationDelay = `${idx * 30}ms`;
           keywordItem.dataset.keyword = keyword.text;
 
           // Add checkbox for selection
@@ -1489,12 +1580,12 @@ Be thorough — check every keyword. If none match, return empty array.`
 
           const copyBtn = document.createElement('button');
           copyBtn.className = 'kw-action';
-          copyBtn.innerHTML = '<span class="material-icons">content_copy</span>';
+          copyBtn.innerHTML = '<span class="emoji-icon">📋</span>';
           copyBtn.addEventListener('click', () => copyKeyword(keyword.text));
 
           const removeBtn = document.createElement('button');
           removeBtn.className = 'kw-action remove';
-          removeBtn.innerHTML = '<span class="material-icons">close</span>';
+          removeBtn.innerHTML = '<span class="emoji-icon">✕</span>';
           removeBtn.addEventListener('click', () => removeKeyword(keyword));
 
           actions.appendChild(copyBtn);
@@ -1617,15 +1708,18 @@ Be thorough — check every keyword. If none match, return empty array.`
   }
 
   function showNotification(title, message) {
-    const notification = document.createElement('div');
-    notification.className = `notification ${title.toLowerCase()}`;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    const type = title.toLowerCase();
+    toast.className = `toast ${type}`;
+    const icons = { error: '❌', success: '✅', warning: '⚠️', info: 'ℹ️' };
+    toast.innerHTML = `<span class="emoji-icon">${icons[type] || 'ℹ️'}</span><span>${message}</span>`;
+    container.appendChild(toast);
     setTimeout(() => {
-      notification.classList.add('fade-out');
-      setTimeout(() => notification.remove(), 300);
-    }, 2000);
+      toast.classList.add('out');
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
   }
 
   // Add keyword to chrome.storage.local directly (used by planner + search term analysis)
@@ -1746,7 +1840,7 @@ Be thorough — check every keyword. If none match, return empty array.`
       actionsContainer.className = 'suggestion-actions';
 
       const copyBtn = document.createElement('button');
-      copyBtn.innerHTML = '<span class="material-icons">content_copy</span>';
+      copyBtn.innerHTML = '<span class="emoji-icon">📋</span>';
       copyBtn.className = 'suggestion-copy-btn';
       copyBtn.title = 'Copy suggestion';
       copyBtn.addEventListener('click', async () => {
@@ -1759,7 +1853,7 @@ Be thorough — check every keyword. If none match, return empty array.`
       });
 
       const addBtn = document.createElement('button');
-      addBtn.innerHTML = '<span class="material-icons">add_circle</span>';
+      addBtn.innerHTML = '<span class="emoji-icon">➕</span>';
       addBtn.className = 'suggestion-add-btn';
       addBtn.title = 'Add to keywords';
       addBtn.addEventListener('click', async () => {
@@ -1845,9 +1939,6 @@ Be thorough — check every keyword. If none match, return empty array.`
       return;
     }
 
-    fileName.textContent = file.name;
-    fileSize.textContent = formatFileSize(file.size);
-    fileInfo.classList.remove('hidden');
     uploadZone.classList.add('hidden');
     
     // Start processing
@@ -1895,22 +1986,64 @@ Be thorough — check every keyword. If none match, return empty array.`
 
   function extractSearchTerms(csvText) {
     const lines = csvText.split('\n');
-    if (lines.length < 2) return [];
+    if (lines.length < 3) return [];
 
-    // Find "Search term" column index
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
-    const searchTermIndex = headers.findIndex(h => h === 'search term' || h === 'search query' || h === 'term');
+    // Google Ads Search Term reports have 1-2 banner lines before the header
+    // Scan for header line that has column names (must contain commas/tabs indicating multiple columns)
+    let headerLine = '';
+    let headerRowIndex = -1;
+    for (let i = 0; i < Math.min(8, lines.length); i++) {
+      const line = lines[i];
+      // Must have at least one delimiter to be a real CSV header row
+      const hasDelim = line.includes(',') || line.includes('\t');
+      if (!hasDelim) continue;
+      const lower = line.toLowerCase();
+      if (lower.includes('search term') || lower.includes('keyword') || lower.includes('campaign') || lower.includes('ad group')) {
+        headerLine = line;
+        headerRowIndex = i;
+        break;
+      }
+    }
+
+    if (headerRowIndex === -1) return [];
+
+    // Detect delimiter: tab or comma
+    const delimiter = headerLine.includes('\t') ? '\t' : ',';
+
+    const headers = headerLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+    const searchTermIndex = headers.findIndex(h =>
+      h === 'search term' || h === 'search term (text only)' ||
+      h === 'search query' || h === 'term' || h === 'search_term'
+    );
 
     if (searchTermIndex === -1) return [];
 
     const terms = new Set();
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = headerRowIndex + 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-      
-      // Handle CSV parsing (simple regex for comma separation respecting quotes)
-      const columns = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
-      
+
+      let columns;
+      if (delimiter === '\t') {
+        columns = line.split('\t');
+      } else {
+        // Proper CSV parsing: split on commas but keep quoted fields intact
+        columns = [];
+        let current = '';
+        let inQuotes = false;
+        for (let ch of line) {
+          if (ch === '"') {
+            inQuotes = !inQuotes;
+          } else if (ch === ',' && !inQuotes) {
+            columns.push(current);
+            current = '';
+          } else {
+            current += ch;
+          }
+        }
+        columns.push(current);
+      }
+
       if (columns[searchTermIndex]) {
         let term = columns[searchTermIndex].trim().replace(/^"|"$/g, '');
         if (term) terms.add(term);
@@ -2058,7 +2191,7 @@ Put each term in ONLY one category. Be thorough.`
             <span class="good-reason">${item.reason}</span>
           </div>
           <button class="good-add-btn" data-keyword="${item.keyword.replace(/"/g, '&quot;')}">
-            <span class="material-icons">add_circle</span>
+            <span class="emoji-icon">➕</span>
           </button>
         `;
         
@@ -2068,10 +2201,10 @@ Put each term in ONLY one category. Be thorough.`
           const kw = addBtn.dataset.keyword;
           const result = await addKeywordToStorage({ text: kw, timestamp: Date.now(), source: 'search_term_analysis' });
           if (result.added) {
-            addBtn.innerHTML = '<span class="material-icons" style="color:#2e7d32;">check_circle</span>';
+            addBtn.innerHTML = '<span class="emoji-icon" style="color:#22c55e;">✅</span>';
             showNotification('Success', `Added "${kw}"`);
             updateKeywordsList();
-            setTimeout(() => { addBtn.innerHTML = '<span class="material-icons">add_circle</span>'; }, 2000);
+            setTimeout(() => { addBtn.innerHTML = '<span class="emoji-icon">➕</span>'; }, 2000);
           } else if (result.duplicate) {
             showNotification('Warning', `"${kw}" already exists`);
           }
@@ -2151,7 +2284,6 @@ Put each term in ONLY one category. Be thorough.`
 
   function resetUpload() {
     uploadProgress.classList.add('hidden');
-    fileInfo.classList.add('hidden');
     uploadZone.classList.remove('hidden');
     csvFileInput.value = '';
   }
@@ -2174,6 +2306,11 @@ Put each term in ONLY one category. Be thorough.`
     generateAdsBtn.textContent = 'Generating...';
     generateAdsBtn.disabled = true;
     regenerateAdsBtn.disabled = true;
+    // Show skeleton
+    const adsContainer = document.getElementById('ads-container');
+    const skeletonEl = document.getElementById('skeleton-loading');
+    if (skeletonEl) skeletonEl.style.display = 'block';
+    if (adsContainer) adsContainer.classList.add('hidden');
 
     try {
       const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
@@ -2187,7 +2324,7 @@ Put each term in ONLY one category. Be thorough.`
           messages: [
             {
               role: 'system',
-              content: `You are a Google Ads expert. Generate 20 headlines (max 28 characters), 8 descriptions (max 60 characters), and 8 call-to-action phrases (max 15 characters) based on the provided keywords. The ad copy should focus on benefits, have a clear call to action, and touch on emotional pain points to encourage clicks. IMPORTANT: Call-to-action phrases must be directly related to and contextually relevant to the specific keywords provided. Analyze each keyword to determine the most appropriate action (e.g., for "running shoes" use "Shop Shoes", for "yoga classes" use "Book Class", for "web design" use "Get Quote", for "insurance" use "Get Covered"). Make CTAs keyword-specific rather than generic. ${capitalizeKeywordsCheckbox.checked ? 'CAPITALIZATION: Since the user has enabled keyword capitalization, ensure ALL generated content (headlines, descriptions, and call-to-actions) uses proper title case capitalization where each major word starts with a capital letter.' : ''} Return the response as a JSON object with three keys: "headlines", "descriptions", and "callToActions".`
+              content: `You are a Google Ads expert. Generate 20 headlines (max 28 characters), 8 descriptions (max 60 characters), and 8 call-to-action phrases (max 15 characters) based on the provided keywords.\r\n\r\n            **Each headline, description, and CTA MUST include ALL of these elements:**\r\n            \r\n            1. **VALUE-BASED MESSAGING** — Clearly state the benefit or value (save time, increase ROI, reduce costs, etc.)\r\n            2. **EMOTIONAL TRIGGERS** — Use urgency (Now, Today, Limited), social proof (Trusted, Loved, Popular), or FOMO (Don't Miss Out)\r\n            3. **PAIN POINTS** — Address the customer's problem directly (Stop wasting budget, Tired of poor results, Done with inefficiency)\r\n            4. **KEYWORDS** — Naturally include the target keywords provided\r\n\r\n            IMPORTANT: Call-to-action phrases must be directly related to and contextually relevant to the specific keywords provided. Analyze each keyword to determine the most appropriate action (e.g., for "running shoes" use "Shop Shoes", for "yoga classes" use "Book Class", for "web design" use "Get Quote", for "insurance" use "Get Covered"). Make CTAs keyword-specific rather than generic. ${capitalizeKeywordsCheckbox.checked ? 'CAPITALIZATION: Since the user has enabled keyword capitalization, ensure ALL generated content (headlines, descriptions, and call-to-actions) uses proper title case capitalization where each major word starts with a capital letter.' : ''} Return the response as a JSON object with three keys: "headlines", "descriptions", and "callToActions".`
             },
             {
               role: 'user',
@@ -2205,6 +2342,12 @@ Put each term in ONLY one category. Be thorough.`
       const { headlines, descriptions, callToActions } = JSON.parse(data.choices[0].message.content);
 
       displayAds(headlines, descriptions, callToActions);
+      // Hide skeleton
+      const skeletonEl = document.getElementById('skeleton-loading');
+      if (skeletonEl) skeletonEl.style.display = 'none';
+      // Shimmer results
+      const ac = document.getElementById('ads-container');
+      if (ac) { ac.classList.remove('hidden'); ac.classList.add('shimmer-overlay'); setTimeout(() => ac.classList.remove('shimmer-overlay'), 600); }
 
     } catch (error) {
       showNotification('Error', 'Failed to generate ads. Check your API key and network connection.');
@@ -2213,6 +2356,8 @@ Put each term in ONLY one category. Be thorough.`
       generateAdsBtn.textContent = 'Generate Headlines & Descriptions';
       generateAdsBtn.disabled = false;
       regenerateAdsBtn.disabled = false;
+      const skeletonEl = document.getElementById('skeleton-loading');
+      if (skeletonEl) skeletonEl.style.display = 'none';
     }
   }
 
@@ -2262,7 +2407,7 @@ Put each term in ONLY one category. Be thorough.`
     actionsContainer.className = 'ad-actions';
 
     const copyBtn = document.createElement('button');
-    copyBtn.innerHTML = '<span class="material-icons">content_copy</span>';
+    copyBtn.innerHTML = '<span class="emoji-icon">📋</span>';
     copyBtn.className = 'ad-copy-btn';
     copyBtn.title = 'Copy ad text';
     copyBtn.addEventListener('click', async () => {
@@ -2275,7 +2420,7 @@ Put each term in ONLY one category. Be thorough.`
     });
 
     const addBtn = document.createElement('button');
-    addBtn.innerHTML = '<span class="material-icons">add_circle</span>';
+    addBtn.innerHTML = '<span class="emoji-icon">➕</span>';
     addBtn.className = 'ad-add-btn';
     addBtn.title = 'Add to keywords';
     addBtn.addEventListener('click', async () => {
