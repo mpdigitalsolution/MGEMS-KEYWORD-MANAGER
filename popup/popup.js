@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const fontSizeInput = document.getElementById('font-size') || null;
   const deepseekApiKeyInput = document.getElementById('api-key-input');
   const saveApiKeyBtn = document.getElementById('save-api-btn');
+  const saveAllSettingsBtn = document.getElementById('save-all-settings-btn');
   const clearStorageBtn = document.getElementById('clear-storage-btn');
   const exportBtn = document.getElementById('export-btn');
   const getSuggestionsBtn = document.getElementById('get-suggestions-btn');
@@ -28,6 +29,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const removeAllBtn = document.getElementById('remove-all-btn') || null;
   const bulkPasteArea = document.getElementById('bulk-paste');
   const bulkPasteBtn = document.getElementById('bulk-add-btn');
+  const keywordSearch = document.getElementById('keyword-search');
+  const quickAddBtn = document.getElementById('quick-add-btn');
+  const emptyAddBtn = document.getElementById('empty-add-btn');
+  const dashboardAddBtn = document.getElementById('dashboard-add');
+  const dashboardOpenKeywords = document.getElementById('dashboard-open-keywords');
   const regenerateBtn = document.getElementById('regenerate-btn');
   const generateAdsBtn = document.getElementById('generate-ads-btn');
   const adsContainer = document.getElementById('ads-container');
@@ -105,6 +111,33 @@ document.addEventListener('DOMContentLoaded', () => {
   let plannerData = [];
   let adGroups = {};
 
+  function parseDelimitedLine(line, delimiter) {
+    if (delimiter === '\t') return line.replace(/\r$/, '').split('\t').map(v => v.trim().replace(/^"|"$/g, ''));
+    const values = [];
+    let value = '', quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (quoted && line[i + 1] === '"') { value += '"'; i++; }
+        else quoted = !quoted;
+      } else if (char === delimiter && !quoted) {
+        values.push(value.trim()); value = '';
+      } else value += char;
+    }
+    values.push(value.trim());
+    return values;
+  }
+
+  function detectHeader(lines, requiredNames, maxRows = 25) {
+    for (let i = 0; i < Math.min(maxRows, lines.length); i++) {
+      const delimiter = lines[i].includes('\t') ? '\t' : ',';
+      const headers = parseDelimitedLine(lines[i], delimiter).map(h => h.toLowerCase().replace(/^\uFEFF/, ''));
+      if (requiredNames.every(group => group.some(name => headers.some(h => h === name || h.includes(name))))) return { index: i, delimiter, headers };
+    }
+    return null;
+  }
+  const csvEscape = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
   // Initialize
   loadSettings();
   updateKeywordsList();
@@ -115,6 +148,47 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeKeywordPerformanceOptimizer();
   initializeHighIntentAnalyzer();
 
+  // Workspace search and quick-add actions.
+  const applyKeywordFilter = () => {
+    const query = (keywordSearch?.value || '').trim().toLowerCase();
+    keywordsContainer?.querySelectorAll('.kw-item').forEach(item => {
+      const text = (item.dataset.keyword || item.textContent || '').toLowerCase();
+      item.hidden = !!query && !text.includes(query);
+    });
+  };
+  keywordSearch?.addEventListener('input', applyKeywordFilter);
+  if (keywordsContainer) new MutationObserver(applyKeywordFilter).observe(keywordsContainer, { childList: true });
+  const openAddKeywords = () => {
+    const section = document.querySelector('#tab-keywords .add-section');
+    if (section) section.open = true;
+    bulkPasteArea?.focus();
+    section?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+  quickAddBtn?.addEventListener('click', openAddKeywords);
+  emptyAddBtn?.addEventListener('click', openAddKeywords);
+  const openKeywordWorkspace = () => document.querySelector('.tab[data-tab="tab-keywords"]')?.click();
+  dashboardOpenKeywords?.addEventListener('click', openKeywordWorkspace);
+  dashboardAddBtn?.addEventListener('click', () => { openKeywordWorkspace(); setTimeout(openAddKeywords, 0); });
+
+  async function refreshDashboard() {
+    const data = await chrome.storage.local.get(['keywords']);
+    const keywords = Array.isArray(data.keywords) ? data.keywords : [];
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const week = keywords.filter(k => Number(k.timestamp || 0) >= weekAgo).length;
+    const sources = new Set(keywords.map(k => k.source).filter(Boolean)).size;
+    document.getElementById('metric-total').textContent = String(keywords.length);
+    document.getElementById('metric-week').textContent = String(week);
+    document.getElementById('metric-sources').textContent = String(sources);
+    document.getElementById('dashboard-recommendation').textContent = keywords.length
+      ? 'Review your latest terms, then run search-term analysis to find negatives.'
+      : 'Add keywords to begin building your campaign list.';
+    const recent = document.getElementById('dashboard-recent');
+    recent.innerHTML = keywords.length ? [...keywords].reverse().slice(0, 5).map(k => `<div class="recent-item"><span>${escapeHtml(k.text || '')}</span><small>${k.source || 'manual'}</small></div>`).join('') : '<div class="recent-empty">No recent keywords yet.</div>';
+  }
+  const escapeHtml = value => String(value).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+  refreshDashboard();
+  chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.keywords) refreshDashboard(); });
+
   // High-Intent Keyword Analyzer Logic
   function initializeHighIntentAnalyzer() {
     uploadPlannerCsvBtn.addEventListener('click', () => {
@@ -123,6 +197,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     plannerUploadZone.addEventListener('click', () => {
       plannerCsvFileInput.click();
+    });
+    plannerUploadZone.addEventListener('dragover', e => { e.preventDefault(); plannerUploadZone.classList.add('drag-over'); });
+    plannerUploadZone.addEventListener('dragleave', () => plannerUploadZone.classList.remove('drag-over'));
+    plannerUploadZone.addEventListener('drop', e => {
+      e.preventDefault(); plannerUploadZone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) handlePlannerFileSelect(e.dataTransfer.files[0]);
     });
 
     plannerCsvFileInput.addEventListener('change', (e) => {
@@ -135,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handlePlannerFileSelect(file) {
-    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+    if (file.type !== 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
       showNotification('Error', 'Please upload a valid CSV file.');
       return;
     }
@@ -171,6 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
         plannerSettingsPanel.classList.remove('hidden');
       }, 500);
     };
+    reader.onerror = () => { showNotification('Error', 'Failed to read the Planner CSV.'); resetPlannerUpload(); };
     reader.readAsText(file);
   }
 
@@ -188,7 +269,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (headerRowIndex === -1) return [];
 
-    const headers = lines[headerRowIndex].split('\t').length > 1 ? lines[headerRowIndex].split('\t') : (lines[headerRowIndex].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[headerRowIndex].split(','));
+    const delimiter = lines[headerRowIndex].includes('\t') ? '\t' : ',';
+    const headers = parseDelimitedLine(lines[headerRowIndex], delimiter);
     const cleanHeaders = headers.map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
 
     const colMap = {
@@ -233,7 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!line.trim()) continue;
       
       // Handle potential tab separation from Planner
-      const columns = line.includes('\t') ? line.split('\t') : (line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(','));
+      const columns = parseDelimitedLine(line, delimiter);
       
       // We only need the columns we mapped, so checking against headers.length might be too strict
       // if the data rows have missing trailing columns
@@ -621,14 +703,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function parsePerformanceCSV(csvText) {
-    const lines = csvText.split('\n');
+    const lines = csvText.split(/\r?\n/);
     if (lines.length < 2) return [];
-
-    // Detect delimiter (tab vs comma)
-    const firstLine = lines[0];
-    const delimiter = firstLine.includes('\t') ? '\t' : ',';
-
-    const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+    const detected = detectHeader(lines, [['keyword','search term'], ['clicks']]);
+    if (!detected) return [];
+    const { index: headerIndex, delimiter, headers } = detected;
 
     const colMap = {
       keyword: headers.findIndex(h => h === 'keyword' || h === 'search term' || h === 'search term (text only)'),
@@ -640,16 +719,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (colMap.keyword === -1 || colMap.clicks === -1) return [];
 
     const data = [];
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = headerIndex + 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
-      let columns;
-      if (delimiter === '\t') {
-        columns = line.split('\t');
-      } else {
-        columns = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
-      }
+      const columns = parseDelimitedLine(line, delimiter);
 
       const maxIdx = Math.max(colMap.keyword, colMap.clicks, colMap.cost, colMap.conversions);
       if (columns.length <= maxIdx) continue;
@@ -726,7 +800,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handlePerformanceFileSelect(file) {
-    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+    if (file.type !== 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
       showNotification('Error', 'Please upload a valid CSV file.');
       return;
     }
@@ -832,11 +906,18 @@ Be thorough — check every keyword. If none match, return empty array.`
           })
         });
 
-        if (!response.ok) throw new Error('API request failed');
+        if (!response.ok) throw new Error(`API request failed (${response.status})`);
 
         const data = await response.json();
         const content = JSON.parse(data.choices[0].message.content);
-        const pause = content.pause || [];
+        const pause = (content.pause || []).map(item => ({
+          keyword: String(item.keyword || ''),
+          clicks: Number(item.clicks) || 0,
+          cost: Number(item.cost) || 0,
+          conversions: Number(item.conversions) || 0,
+          cpc: Number(item.cpc) || 0,
+          reason: String(item.reason || 'Flagged by AI performance analysis.')
+        })).filter(item => item.keyword);
         if (Array.isArray(pause)) {
           pauseCandidates.push(...pause);
         }
@@ -925,6 +1006,9 @@ Be thorough — check every keyword. If none match, return empty array.`
     
     if (pauseCandidates.length === 0) {
       pauseList.innerHTML = '<div style="padding:20px;text-align:center;color:#666;">No keywords found that need pausing.</div>';
+      const exportBtn = document.getElementById('export-perf-btn');
+      exportBtn.disabled = true;
+      exportBtn.onclick = null;
       return;
     }
 
@@ -963,6 +1047,7 @@ Be thorough — check every keyword. If none match, return empty array.`
     
     // Update export button
     const exportBtn = document.getElementById('export-perf-btn');
+    exportBtn.disabled = false;
     exportBtn.onclick = () => {
       const selected = [];
       document.querySelectorAll('#perf-pause-list .neg-checkbox:checked').forEach(cb => {
@@ -973,7 +1058,7 @@ Be thorough — check every keyword. If none match, return empty array.`
         showNotification('Warning', 'No keywords selected for export.');
         return;
       }
-      const csvContent = "Keyword,Match Type,Status\n" + selected.map(k => `"${k}",Phrase,Paused`).join("\n");
+      const csvContent = "Keyword,Match Type,Status\n" + selected.map(k => `${csvEscape(k)},Phrase,Paused`).join("\n");
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -983,16 +1068,17 @@ Be thorough — check every keyword. If none match, return empty array.`
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       showNotification('Success', `Exported ${selected.length} keywords to pause`);
     };
   }
 
-  initializeKeywordPerformanceOptimizer();
   initializeTabs();
 
   // Tab Navigation Logic
   function initializeTabs() {
-    const tabBtns = document.querySelectorAll('.tab');
+    const tabBtns = document.querySelectorAll('.tab[data-tab]');
     const tabContents = document.querySelectorAll('.tab-content');
     
     function activateTab(tabId) {
@@ -1030,7 +1116,7 @@ Be thorough — check every keyword. If none match, return empty array.`
     if (savedTab && document.getElementById(savedTab)) {
       activateTab(savedTab);
     } else {
-      activateTab('tab-keywords'); // Default
+      activateTab('tab-overview'); // Default
     }
   }
 
@@ -1056,7 +1142,7 @@ Be thorough — check every keyword. If none match, return empty array.`
   if (gradientStartInput) gradientStartInput.addEventListener('input', saveSettings);
   if (gradientEndInput) gradientEndInput.addEventListener('input', saveSettings);
   if (fontSelect) fontSelect.addEventListener('change', saveSettings);
-  if (fontSizeInput) fontSizeInput.addEventListener('input', saveSettings);
+  if (fontSizeInput) fontSizeInput.addEventListener('change', saveSettings);
 
   // Check if content script is active on a Keyword Planner page
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -1088,6 +1174,28 @@ Be thorough — check every keyword. If none match, return empty array.`
     });
   }
 
+  if (saveAllSettingsBtn) {
+    saveAllSettingsBtn.addEventListener('click', async () => {
+      const originalLabel = saveAllSettingsBtn.textContent;
+      saveAllSettingsBtn.disabled = true;
+      saveAllSettingsBtn.textContent = 'Saving…';
+      try {
+        await saveSettings();
+        saveAllSettingsBtn.textContent = 'Saved';
+        showNotification('Success', 'All settings saved.');
+        window.setTimeout(() => {
+          saveAllSettingsBtn.textContent = originalLabel;
+        }, 1400);
+      } catch (error) {
+        console.error('Failed to save settings:', error);
+        saveAllSettingsBtn.textContent = originalLabel;
+        showNotification('Error', 'Could not save settings.');
+      } finally {
+        saveAllSettingsBtn.disabled = false;
+      }
+    });
+  }
+
   // Diagnostics: Force Capture button
   const forceCaptureBtn = document.getElementById('force-capture-btn');
   const captureStatusMsg = document.getElementById('capture-status');
@@ -1098,8 +1206,12 @@ Be thorough — check every keyword. If none match, return empty array.`
       captureStatusMsg.style.color = '#525f7f';
       
       try {
-        // First, try to sync from page localStorage to extension storage
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        // The manager runs in its own extension window, so currentWindow points
+        // at popup.html. Find an eligible Google Ads tab across browser windows.
+        const eligibleTabs = await chrome.tabs.query({
+          url: ['https://ads.google.com/*', 'https://keywordplanner.google.com/*']
+        });
+        const tab = eligibleTabs.sort((a, b) => Number(b.active) - Number(a.active) || (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
         if (tab && tab.id) {
           // Try to send forceCapture to the content script
           try {
@@ -1135,7 +1247,7 @@ Be thorough — check every keyword. If none match, return empty array.`
             }
           }
         } else {
-          captureStatusMsg.textContent = '❌ No active tab found';
+          captureStatusMsg.textContent = 'Open Google Ads or Keyword Planner in a browser tab, then try again.';
           captureStatusMsg.style.color = '#c62828';
         }
         
@@ -1408,7 +1520,7 @@ Be thorough — check every keyword. If none match, return empty array.`
 
   // Functions
   function loadSettings() {
-    chrome.storage.local.get(['capitalizeKeywords', 'captureDebugMode', 'gradientStart', 'gradientEnd', 'font', 'fontSize', 'deepseekApiKey'], (result) => {
+    chrome.storage.local.get(['capitalizeKeywords', 'captureDebugMode', 'gradientStart', 'gradientEnd', 'font', 'fontSize', 'deepseekApiKey', 'theme', 'density', 'reduceMotion'], (result) => {
       if (result.capitalizeKeywords) {
         capitalizeKeywordsCheckbox.checked = true;
       }
@@ -1423,45 +1535,85 @@ Be thorough — check every keyword. If none match, return empty array.`
         gradientEndInput.value = result.gradientEnd;
       }
       if (result.font && fontSelect) {
-        fontSelect.value = result.font;
+        const supportedFont = [...fontSelect.options].some(option => option.value === result.font);
+        fontSelect.value = supportedFont ? result.font : 'system-ui, -apple-system, sans-serif';
       }
       if (result.fontSize && fontSizeInput) {
-        fontSizeInput.value = result.fontSize;
+        const legacySize = Number(result.fontSize);
+        const sizePreset = ['small', 'medium', 'large'].includes(result.fontSize)
+          ? result.fontSize
+          : (legacySize <= 12 ? 'small' : legacySize >= 16 ? 'large' : 'medium');
+        fontSizeInput.value = sizePreset;
       }
       if (result.deepseekApiKey) {
         deepseekApiKeyInput.value = result.deepseekApiKey;
       }
-      // Load theme
-      const savedTheme = result.theme || 'google-ads';
-      document.documentElement.setAttribute('data-theme', savedTheme);
+      // Migrate legacy presets to the cohesive theme system.
+      const themeMigration = { 'google-ads': 'cloud', minimal: 'cloud', 'ads-dark': 'midnight', performance: 'aurora', agency: 'midnight' };
+      const savedTheme = themeMigration[result.theme] || result.theme || 'midnight';
+      applyThemePreference(savedTheme);
       document.querySelectorAll('.theme-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.themeVal === savedTheme);
+        btn.setAttribute('aria-checked', String(btn.dataset.themeVal === savedTheme));
       });
+      const density = result.density === 'compact' ? 'compact' : 'comfortable';
+      document.documentElement.setAttribute('data-density', density);
+      const densitySelect = document.getElementById('density-select');
+      if (densitySelect) densitySelect.value = density;
+      const reduceMotion = result.reduceMotion === true;
+      document.documentElement.setAttribute('data-reduce-motion', String(reduceMotion));
+      const reduceMotionCb = document.getElementById('reduce-motion-cb');
+      if (reduceMotionCb) reduceMotionCb.checked = reduceMotion;
+      if (result.theme !== savedTheme) chrome.storage.local.set({ theme: savedTheme });
+      applySettings();
     });
     // Theme switcher
     document.querySelectorAll('.theme-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const theme = btn.dataset.themeVal;
-        document.documentElement.setAttribute('data-theme', theme);
+        applyThemePreference(theme);
         document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        document.querySelectorAll('.theme-btn').forEach(b => b.setAttribute('aria-checked', String(b === btn)));
         chrome.storage.local.set({ theme });
       });
+    });
+    document.getElementById('density-select')?.addEventListener('change', event => {
+      const density = event.target.value === 'compact' ? 'compact' : 'comfortable';
+      document.documentElement.setAttribute('data-density', density);
+      chrome.storage.local.set({ density });
+    });
+    document.getElementById('reduce-motion-cb')?.addEventListener('change', event => {
+      const reduceMotion = event.target.checked;
+      document.documentElement.setAttribute('data-reduce-motion', String(reduceMotion));
+      chrome.storage.local.set({ reduceMotion });
     });
     applySettings();
   }
 
-  function saveSettings() {
+  const systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  function applyThemePreference(theme) {
+    document.documentElement.setAttribute('data-theme', theme === 'system' ? (systemThemeQuery.matches ? 'midnight' : 'cloud') : theme);
+    document.documentElement.dataset.themePreference = theme;
+  }
+  systemThemeQuery.addEventListener('change', () => {
+    if (document.documentElement.dataset.themePreference === 'system') applyThemePreference('system');
+  });
+
+  async function saveSettings() {
     const settings = {
       capitalizeKeywords: capitalizeKeywordsCheckbox.checked,
       captureDebugMode: captureDebugModeCheckbox ? captureDebugModeCheckbox.checked : false,
       gradientStart: gradientStartInput ? gradientStartInput.value : '#6366F1',
       gradientEnd: gradientEndInput ? gradientEndInput.value : '#8f94fb',
-      font: fontSelect ? fontSelect.value : '-apple-system',
-      fontSize: fontSizeInput ? fontSizeInput.value : 14,
-      deepseekApiKey: deepseekApiKeyInput.value
+      font: fontSelect ? fontSelect.value : 'system-ui, -apple-system, sans-serif',
+      fontSize: fontSizeInput ? fontSizeInput.value : 'medium',
+      theme: document.documentElement.dataset.themePreference || 'midnight',
+      density: document.documentElement.getAttribute('data-density') || 'comfortable',
+      reduceMotion: document.documentElement.getAttribute('data-reduce-motion') === 'true',
+      deepseekApiKey: deepseekApiKeyInput ? deepseekApiKeyInput.value.trim() : ''
     };
-    chrome.storage.local.set(settings);
+    await chrome.storage.local.set(settings);
     applySettings();
   }
 
@@ -1483,7 +1635,10 @@ Be thorough — check every keyword. If none match, return empty array.`
       document.body.style.fontFamily = fontSelect.value;
     }
     if (fontSizeInput) {
-      document.body.style.fontSize = `${fontSizeInput.value}px`;
+      const sizePreset = ['small', 'medium', 'large'].includes(fontSizeInput.value)
+        ? fontSizeInput.value
+        : 'medium';
+      document.documentElement.dataset.fontSize = sizePreset;
     }
   }
 
@@ -1713,8 +1868,10 @@ Be thorough — check every keyword. If none match, return empty array.`
     const toast = document.createElement('div');
     const type = title.toLowerCase();
     toast.className = `toast ${type}`;
-    const icons = { error: '❌', success: '✅', warning: '⚠️', info: 'ℹ️' };
-    toast.innerHTML = `<span class="emoji-icon">${icons[type] || 'ℹ️'}</span><span>${message}</span>`;
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    const icons = { error: '×', success: '✓', warning: '!', info: 'i' };
+    toast.innerHTML = `<span class="status-icon" aria-hidden="true">${icons[type] || 'i'}</span><span>${message}</span>`;
     container.appendChild(toast);
     setTimeout(() => {
       toast.classList.add('out');
@@ -1934,7 +2091,7 @@ Be thorough — check every keyword. If none match, return empty array.`
   }
 
   function handleFileSelect(file) {
-    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+    if (file.type !== 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
       showNotification('Error', 'Please upload a valid CSV file.');
       return;
     }
@@ -1985,32 +2142,11 @@ Be thorough — check every keyword. If none match, return empty array.`
   }
 
   function extractSearchTerms(csvText) {
-    const lines = csvText.split('\n');
-    if (lines.length < 3) return [];
-
-    // Google Ads Search Term reports have 1-2 banner lines before the header
-    // Scan for header line that has column names (must contain commas/tabs indicating multiple columns)
-    let headerLine = '';
-    let headerRowIndex = -1;
-    for (let i = 0; i < Math.min(8, lines.length); i++) {
-      const line = lines[i];
-      // Must have at least one delimiter to be a real CSV header row
-      const hasDelim = line.includes(',') || line.includes('\t');
-      if (!hasDelim) continue;
-      const lower = line.toLowerCase();
-      if (lower.includes('search term') || lower.includes('keyword') || lower.includes('campaign') || lower.includes('ad group')) {
-        headerLine = line;
-        headerRowIndex = i;
-        break;
-      }
-    }
-
-    if (headerRowIndex === -1) return [];
-
-    // Detect delimiter: tab or comma
-    const delimiter = headerLine.includes('\t') ? '\t' : ',';
-
-    const headers = headerLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+    const lines = csvText.split(/\r?\n/);
+    if (lines.length < 2) return [];
+    const detected = detectHeader(lines, [['search term','search query','search_term']], 30);
+    if (!detected) return [];
+    const { index: headerRowIndex, delimiter, headers } = detected;
     const searchTermIndex = headers.findIndex(h =>
       h === 'search term' || h === 'search term (text only)' ||
       h === 'search query' || h === 'term' || h === 'search_term'
@@ -2023,26 +2159,7 @@ Be thorough — check every keyword. If none match, return empty array.`
       const line = lines[i].trim();
       if (!line) continue;
 
-      let columns;
-      if (delimiter === '\t') {
-        columns = line.split('\t');
-      } else {
-        // Proper CSV parsing: split on commas but keep quoted fields intact
-        columns = [];
-        let current = '';
-        let inQuotes = false;
-        for (let ch of line) {
-          if (ch === '"') {
-            inQuotes = !inQuotes;
-          } else if (ch === ',' && !inQuotes) {
-            columns.push(current);
-            current = '';
-          } else {
-            current += ch;
-          }
-        }
-        columns.push(current);
-      }
+      const columns = parseDelimitedLine(line, delimiter);
 
       if (columns[searchTermIndex]) {
         let term = columns[searchTermIndex].trim().replace(/^"|"$/g, '');
@@ -2059,8 +2176,8 @@ Be thorough — check every keyword. If none match, return empty array.`
     });
 
     if (!deepseekApiKey) {
-      showNotification('Error', 'DeepSeek API key required for analysis.');
-      resetUpload();
+      showNotification('Warning', 'No DeepSeek API key. Using local search-term rules.');
+      analyzeSearchTermsLocally(searchTerms);
       return;
     }
 
@@ -2108,14 +2225,18 @@ Put each term in ONLY one category. Be thorough.`
           })
         });
 
-        if (!response.ok) throw new Error('API request failed');
+        if (!response.ok) throw new Error(`API request failed (${response.status})`);
 
         const data = await response.json();
         const content = JSON.parse(data.choices[0].message.content);
         
         // Handle different JSON structures the API might return
-        const negatives = content.negatives || content.keywords || (Array.isArray(content) ? content : []);
-        const good = content.good || [];
+        const normalizeItems = items => (Array.isArray(items) ? items : []).map(item => typeof item === 'string'
+          ? { keyword: item, reason: 'Identified by AI analysis.' }
+          : { keyword: String(item.keyword || ''), reason: String(item.reason || 'Identified by AI analysis.') }
+        ).filter(item => item.keyword);
+        const negatives = normalizeItems(content.negatives || content.keywords || (Array.isArray(content) ? content : []));
+        const good = normalizeItems(content.good || []);
         
         if (Array.isArray(negatives)) {
           analyzedNegativeKeywords.push(...negatives);
@@ -2138,9 +2259,20 @@ Put each term in ONLY one category. Be thorough.`
 
     } catch (error) {
       console.error('Analysis error:', error);
-      showNotification('Error', 'AI Analysis failed. Please try again.');
-      resetUpload();
+      showNotification('Warning', 'AI analysis failed. Using local search-term rules.');
+      analyzeSearchTermsLocally(searchTerms);
     }
+  }
+
+  function analyzeSearchTermsLocally(searchTerms) {
+    const negativePattern = /\b(free|jobs?|career|salary|course|training|tutorial|diy|definition|meaning|template|torrent|reddit|youtube|used)\b/i;
+    const commercialPattern = /\b(buy|price|pricing|quote|service|company|agency|hire|near me|consultant|provider|software|solution|best)\b/i;
+    analyzedNegativeKeywords = searchTerms.filter(term => negativePattern.test(term)).map(keyword => ({ keyword, reason: 'Likely low commercial intent or irrelevant research intent.' }));
+    const negatives = new Set(analyzedNegativeKeywords.map(item => item.keyword));
+    const good = searchTerms.filter(term => !negatives.has(term) && commercialPattern.test(term)).map(keyword => ({ keyword, reason: 'Contains a strong commercial or transactional signal.' }));
+    progressFill.style.width = '100%';
+    progressText.textContent = `Local analysis complete: ${analyzedNegativeKeywords.length} negatives, ${good.length} opportunities`;
+    setTimeout(() => displayAnalysisResults(good), 250);
   }
 
   function displayAnalysisResults(goodKeywords = []) {
@@ -2166,8 +2298,8 @@ Put each term in ONLY one category. Be thorough.`
         div.innerHTML = `
           <input type="checkbox" class="neg-checkbox" checked>
           <div class="neg-content">
-            <span class="neg-term">${item.keyword}</span>
-            <span class="neg-reason">${item.reason}</span>
+            <span class="neg-term">${escapeHtml(item.keyword)}</span>
+            <span class="neg-reason">${escapeHtml(item.reason)}</span>
           </div>
         `;
         negativeKeywordsList.appendChild(div);
@@ -2187,8 +2319,8 @@ Put each term in ONLY one category. Be thorough.`
         div.dataset.index = idx;
         div.innerHTML = `
           <div class="good-content">
-            <span class="good-term">${item.keyword}</span>
-            <span class="good-reason">${item.reason}</span>
+            <span class="good-term">${escapeHtml(item.keyword)}</span>
+            <span class="good-reason">${escapeHtml(item.reason)}</span>
           </div>
           <button class="good-add-btn" data-keyword="${item.keyword.replace(/"/g, '&quot;')}">
             <span class="emoji-icon">➕</span>
@@ -2227,7 +2359,7 @@ Put each term in ONLY one category. Be thorough.`
         const term = cb.closest('.neg-item').querySelector('.neg-term').textContent;
         selected.push(term);
       });
-      const csvContent = "Negative Keyword\n" + selected.join("\n");
+      const csvContent = "Negative Keyword\n" + selected.map(csvEscape).join("\n");
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -2269,7 +2401,7 @@ Put each term in ONLY one category. Be thorough.`
       return;
     }
 
-    const csvContent = "Negative Keyword\n" + selected.join("\n");
+    const csvContent = "Negative Keyword\n" + selected.map(csvEscape).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     

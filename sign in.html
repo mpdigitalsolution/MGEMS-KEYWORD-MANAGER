@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ClientBase — Client Database Manager</title>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="vendor/supabase.js"></script>
 <style>
   /* ============================== TOKENS ============================== */
   :root{
@@ -519,10 +519,10 @@
 /* ==========================================================================
    CONFIG — replace with your Supabase project credentials
    ========================================================================== */
-const SUPABASE_URL = 'https://YOUR_PROJECT_REF.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://wbqmtjjrpnlcbxbvpqsx.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_z6WjJtP2sdg-geLG0aazJA_BFyXLUrM';
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 /* ==========================================================================
    STATE

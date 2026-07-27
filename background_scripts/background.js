@@ -1,5 +1,17 @@
 // Helper for storage access
 const storage = chrome.storage.local;
+const MANAGER_WINDOW_ID_KEY = 'managerWindowId';
+const MANAGER_WINDOW_BOUNDS_KEY = 'managerWindowBounds';
+const DEFAULT_MANAGER_WIDTH = 900;
+const DEFAULT_MANAGER_HEIGHT = 720;
+let boundsSaveTimer = null;
+
+function clampWindowDimension(value, min, max, fallback) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue)
+    ? Math.min(max, Math.max(min, Math.round(numericValue)))
+    : fallback;
+}
 
 function getBadgeTextByCount(count) {
   if (!count || count <= 0) return '';
@@ -26,23 +38,87 @@ async function refreshKeywordBadgeFromStorage() {
   }
 }
 
-// Open as draggable window on extension click
-chrome.action.onClicked.addListener(() => {
-  chrome.windows.getLastFocused((win) => {
-    chrome.windows.create({
-      url: chrome.runtime.getURL('popup/popup.html'),
-      type: 'popup',
-      width: 420,
-      height: 620,
-      left: win ? win.left + 60 : 100,
-      top: win ? win.top + 60 : 100
+// Open one resizable manager window and restore the user's last normal size.
+chrome.action.onClicked.addListener(async () => {
+  const saved = await storage.get([MANAGER_WINDOW_ID_KEY, MANAGER_WINDOW_BOUNDS_KEY]);
+  const existingWindowId = saved[MANAGER_WINDOW_ID_KEY];
+
+  if (Number.isInteger(existingWindowId)) {
+    try {
+      await chrome.windows.get(existingWindowId);
+      await chrome.windows.update(existingWindowId, { focused: true });
+      return;
+    } catch (_error) {
+      await storage.remove(MANAGER_WINDOW_ID_KEY);
+    }
+  }
+
+  const lastFocused = await chrome.windows.getLastFocused();
+  const savedBounds = saved[MANAGER_WINDOW_BOUNDS_KEY] || {};
+  const width = clampWindowDimension(savedBounds.width, 420, 1600, DEFAULT_MANAGER_WIDTH);
+  const height = clampWindowDimension(savedBounds.height, 560, 1200, DEFAULT_MANAGER_HEIGHT);
+  const createData = {
+    url: chrome.runtime.getURL('popup/popup.html'),
+    type: 'popup'
+  };
+
+  if (savedBounds.state === 'maximized') {
+    createData.state = 'maximized';
+  } else {
+    createData.width = width;
+    createData.height = height;
+    createData.left = Number.isFinite(lastFocused?.left) ? lastFocused.left + 60 : 100;
+    createData.top = Number.isFinite(lastFocused?.top) ? lastFocused.top + 60 : 100;
+  }
+
+  const createdWindow = await chrome.windows.create(createData);
+
+  if (Number.isInteger(createdWindow?.id)) {
+    await storage.set({ [MANAGER_WINDOW_ID_KEY]: createdWindow.id });
+  }
+});
+
+chrome.windows.onBoundsChanged.addListener((windowInfo) => {
+  clearTimeout(boundsSaveTimer);
+  boundsSaveTimer = setTimeout(async () => {
+    const saved = await storage.get(MANAGER_WINDOW_ID_KEY);
+    if (windowInfo.id !== saved[MANAGER_WINDOW_ID_KEY]) return;
+
+    const previous = await storage.get(MANAGER_WINDOW_BOUNDS_KEY);
+    const previousBounds = previous[MANAGER_WINDOW_BOUNDS_KEY] || {};
+
+    if (windowInfo.state === 'maximized') {
+      await storage.set({
+        [MANAGER_WINDOW_BOUNDS_KEY]: {
+          ...previousBounds,
+          state: 'maximized'
+        }
+      });
+      return;
+    }
+
+    if (windowInfo.state !== 'normal') return;
+
+    await storage.set({
+      [MANAGER_WINDOW_BOUNDS_KEY]: {
+        width: clampWindowDimension(windowInfo.width, 420, 1600, DEFAULT_MANAGER_WIDTH),
+        height: clampWindowDimension(windowInfo.height, 560, 1200, DEFAULT_MANAGER_HEIGHT),
+        state: 'normal'
+      }
     });
-  });
+  }, 250);
+});
+
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  const saved = await storage.get(MANAGER_WINDOW_ID_KEY);
+  if (windowId === saved[MANAGER_WINDOW_ID_KEY]) {
+    await storage.remove(MANAGER_WINDOW_ID_KEY);
+  }
 });
 
 // Init on install
-chrome.runtime.onInstalled.addListener(() => {
-  setupContextMenu();
+chrome.runtime.onInstalled.addListener(async () => {
+  await setupContextMenu();
   refreshKeywordBadgeFromStorage();
 });
 
@@ -51,12 +127,21 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 // Setup Context Menu
-function setupContextMenu() {
-  chrome.contextMenus.create({
-    id: "addKeyword",
-    title: "Add to Keyword Manager",
-    contexts: ["selection"]
-  });
+async function setupContextMenu() {
+  try {
+    // Context-menu entries survive extension service-worker restarts and
+    // development reloads. Rebuild our menu so setup is always idempotent.
+    await chrome.contextMenus.removeAll();
+    chrome.contextMenus.create({
+      id: "addKeyword",
+      title: "Add to Mgem's Keyword Manager",
+      contexts: ["selection"]
+    }, () => {
+      if (chrome.runtime.lastError) console.error('Context menu setup failed:', chrome.runtime.lastError.message);
+    });
+  } catch (error) {
+    console.error('Context menu setup failed:', error);
+  }
 }
 
 // Handle Context Menu Clicks
@@ -400,7 +485,7 @@ async function analyzePlannerKeywords(keywords, apiKey) {
     // Use chrome.notifications.create
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: '../icons/icon48.png', // Assuming icons exist, otherwise default
+      iconUrl: 'icons/icon48.png',
       title: 'Analysis Complete',
       message: 'Your keyword analysis is ready.'
     });

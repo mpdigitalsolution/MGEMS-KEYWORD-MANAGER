@@ -1,54 +1,137 @@
 <!DOCTYPE html>
-<html data-theme="google-ads">
+<html data-theme="midnight" data-theme-preference="midnight" data-density="comfortable" data-reduce-motion="false">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mgem's Keyword Manager</title>
   <link rel="stylesheet" href="popup.css">
   
 </head>
-<body>
+<body id="root" class="app-shell auth-pending">
+  <section id="auth-gate" class="auth-gate" aria-labelledby="auth-title">
+    <div class="auth-card">
+      <span class="auth-mark" aria-hidden="true"><span></span></span>
+      <span class="section-kicker">Secure workspace</span>
+      <h2 id="auth-title">Sign in to Mgem's</h2>
+      <p id="auth-description">Use your account to access the Keyword Manager.</p>
+      <div id="auth-tabs" class="auth-tabs" role="tablist" aria-label="Authentication mode">
+        <button id="auth-signin-tab" class="auth-tab active" type="button" role="tab" aria-selected="true">Sign in</button>
+        <button id="auth-signup-tab" class="auth-tab" type="button" role="tab" aria-selected="false">Create account</button>
+      </div>
+      <form id="auth-form" class="auth-form">
+        <label for="auth-email">Email</label>
+        <input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com">
+        <label for="auth-password">Password</label>
+        <input id="auth-password" type="password" autocomplete="current-password" minlength="6" required placeholder="At least 6 characters">
+        <div id="auth-message" class="auth-message" role="status" aria-live="polite"></div>
+        <button id="auth-submit" class="auth-submit" type="submit">Sign in</button>
+      </form>
+      <div class="auth-divider"><span>or</span></div>
+      <button id="auth-demo" class="auth-demo" type="button">
+        Continue with free demo
+        <small>No account required · Data stays on this device</small>
+      </button>
+    </div>
+  </section>
+
   <!-- Header -->
   <div class="header">
     <div class="header-left">
-      <span class="brand-icon">◆</span>
+      <span class="brand-icon" aria-hidden="true"><span></span></span>
       <div>
-        <h1 class="title">MGEM'S KEYWORD MANAGER</h1>
-        <span class="tagline">Your Smart Keyword Assistant</span>
+        <h1 class="title">Mgem's Keyword Manager</h1>
+        <span class="tagline">Google Ads workspace</span>
       </div>
     </div>
     <div class="header-right">
+      <button id="global-add-keywords" class="global-add-keywords" type="button" title="Add keywords (Ctrl+N)">
+        <span aria-hidden="true">+</span>
+        <span>Add keywords</span>
+      </button>
+      <button id="fullscreen-toggle" class="fullscreen-toggle" type="button" title="Enter fullscreen" aria-label="Enter fullscreen" aria-pressed="false">
+        <span class="fullscreen-toggle-icon" aria-hidden="true"></span>
+      </button>
+      <button id="sidebar-toggle" class="sidebar-toggle" type="button" title="Collapse navigation" aria-label="Collapse navigation" aria-expanded="true">
+        <span class="sidebar-toggle-icon" aria-hidden="true"></span>
+      </button>
+      <div id="auth-user" class="auth-user hidden">
+        <span id="auth-user-email"></span>
+        <button id="auth-signout" class="auth-signout" type="button">Sign out</button>
+      </div>
       <span id="badge-count" class="badge-count hidden">0</span>
       <button id="export-btn" class="btn-icon" title="Export all">
-        <span class="emoji-icon">⬇️</span>
+        <span aria-hidden="true">↓</span><span class="sr-only">Export all keywords</span>
       </button>
     </div>
   </div>
 
   <!-- Tabs -->
   <div class="tabs">
+    <button class="tab" data-tab="tab-overview" title="Overview">
+      <span class="nav-icon" aria-hidden="true">O</span>
+      <span class="tab-label">Overview</span>
+    </button>
     <button class="tab active" data-tab="tab-keywords" title="Keywords">
-      <span class="emoji-icon">📋</span>
+      <span class="nav-icon" aria-hidden="true">K</span>
       <span class="tab-label">Keywords</span>
     </button>
-    <button class="tab" data-tab="tab-negative" title="Search Term Analysis">
-      <span class="emoji-icon">🚫</span>
-      <span class="tab-label">Negatives</span>
-    </button>
-    <button class="tab" data-tab="tab-performance" title="Performance">
-      <span class="emoji-icon">📊</span>
-      <span class="tab-label">Performance</span>
-    </button>
-    <button class="tab" data-tab="tab-planner" title="Planner Analyzer">
-      <span class="emoji-icon">🔍</span>
-      <span class="tab-label">Planner</span>
-    </button>
+    <div id="analyze-nav-group" class="nav-group">
+      <button id="analyze-nav-toggle" class="tab nav-group-toggle" type="button" title="Analysis tools" aria-expanded="false" aria-controls="analyze-subnav">
+        <span class="nav-icon" aria-hidden="true">A</span>
+        <span class="tab-label">Analyze</span>
+        <span class="nav-chevron" aria-hidden="true"></span>
+      </button>
+      <div id="analyze-subnav" class="nav-submenu">
+        <button class="tab analysis-tab" data-tab="tab-negative" title="Search Term Analysis">
+          <span class="nav-icon" aria-hidden="true">S</span>
+          <span class="tab-label">Search Terms</span>
+        </button>
+        <button class="tab analysis-tab" data-tab="tab-performance" title="Performance Analysis">
+          <span class="nav-icon" aria-hidden="true">P</span>
+          <span class="tab-label">Performance</span>
+        </button>
+        <button class="tab analysis-tab" data-tab="tab-planner" title="Keyword Planner">
+          <span class="nav-icon" aria-hidden="true">K</span>
+          <span class="tab-label">Keyword Planner</span>
+        </button>
+      </div>
+    </div>
     <button class="tab" data-tab="tab-settings" title="Settings">
-      <span class="emoji-icon">⚙️</span>
+      <span class="nav-icon" aria-hidden="true">S</span>
       <span class="tab-label">Settings</span>
     </button>
   </div>
 
+  <!-- TAB: Overview -->
+  <div id="tab-overview" class="tab-content">
+    <div class="workspace-heading">
+      <div><span class="section-kicker">Workspace</span><h2>Overview</h2><p>Your keyword activity and recommended next steps.</p></div>
+      <button id="dashboard-add" class="workspace-action" type="button">+ Add keywords</button>
+    </div>
+    <div class="dashboard-grid">
+      <article class="metric-card"><span>Total keywords</span><strong id="metric-total">0</strong><small>Stored locally</small></article>
+      <article class="metric-card"><span>Added this week</span><strong id="metric-week">0</strong><small>Recent growth</small></article>
+      <article class="metric-card"><span>Capture sources</span><strong id="metric-sources">0</strong><small>Connected workflows</small></article>
+    </div>
+    <section class="dashboard-panel">
+      <div class="panel-heading"><div><h3>Recommended next step</h3><p id="dashboard-recommendation">Add keywords to begin building your campaign list.</p></div><button id="dashboard-open-keywords" class="btn-sm">Open keywords</button></div>
+    </section>
+    <section class="dashboard-panel">
+      <div class="panel-heading"><div><h3>Recently captured</h3><p>Your latest saved keyword terms.</p></div></div>
+      <div id="dashboard-recent" class="recent-list"><div class="recent-empty">No recent keywords yet.</div></div>
+    </section>
+  </div>
+
   <!-- TAB: Keywords -->
   <div id="tab-keywords" class="tab-content active">
+    <div class="workspace-heading">
+      <div><span class="section-kicker">Keyword library</span><h2>Keywords</h2><p>Review, format, organize, and export your captured terms.</p></div>
+      <button id="quick-add-btn" class="workspace-action" type="button">+ Add keywords</button>
+    </div>
+    <div class="keyword-toolbar">
+      <label class="search-field"><span aria-hidden="true">⌕</span><input id="keyword-search" type="search" placeholder="Search keywords…" aria-label="Search keywords"></label>
+      <span class="toolbar-help">Use the match type controls before copying or exporting.</span>
+    </div>
     <!-- Match Type -->
     <div class="match-type">
       <button class="mt-btn" data-value="broad">Broad</button>
@@ -62,9 +145,10 @@
 
     <!-- Empty State -->
     <div id="empty-state-kw" class="empty-state">
-      <span class="emoji-icon">📋</span>
+      <span class="empty-icon" aria-hidden="true">K</span>
       <h3>No keywords yet</h3>
-      <p>Click <strong>Add Keywords</strong> below to paste keywords, or use <strong>AI Suggestions</strong> to generate them.</p>
+      <p>Capture from Google Ads, paste a list, or generate high-intent keyword ideas.</p>
+      <button id="empty-add-btn" class="empty-action" type="button">Add your first keywords</button>
     </div>
 
     <!-- Count Bar + Select All -->
@@ -143,6 +227,7 @@
 
   <!-- TAB: Negative (Search Term Analysis) -->
   <div id="tab-negative" class="tab-content">
+    <div class="workspace-heading"><div><span class="section-kicker">Optimization</span><h2>Search-term analysis</h2><p>Find negative candidates and valuable terms worth adding.</p></div></div>
     <div id="empty-state-neg" class="empty-state">
       <span class="emoji-icon">☁️</span>
       <h3>Analyze search terms</h3>
@@ -190,6 +275,7 @@
 
   <!-- TAB: Performance -->
   <div id="tab-performance" class="tab-content">
+    <div class="workspace-heading"><div><span class="section-kicker">Campaign health</span><h2>Performance</h2><p>Turn campaign exports into clear optimization actions.</p></div></div>
     <div id="empty-state-perf" class="empty-state">
       <span class="emoji-icon">📊</span>
       <h3>Analyze performance</h3>
@@ -225,6 +311,7 @@
 
   <!-- TAB: Planner -->
   <div id="tab-planner" class="tab-content">
+    <div class="workspace-heading"><div><span class="section-kicker">Planning</span><h2>Keyword Planner</h2><p>Group opportunities by intent, volume, and cost.</p></div></div>
     <div id="empty-state-planner" class="empty-state">
       <span class="emoji-icon">🔍</span>
       <h3>Analyze keyword planner data</h3>
@@ -255,6 +342,10 @@
         <label>Max CPC ($)</label>
         <input type="number" id="max-cpc" value="5.00" step="0.01" class="input-sm">
       </div>
+      <label class="setting-row">
+        <span>Use AI clustering</span>
+        <input type="checkbox" id="use-ai-analysis">
+      </label>
       <button id="analyze-planner-btn" class="btn-primary" style="margin-top:8px;">Analyze & Organize</button>
     </div>
 
@@ -269,28 +360,36 @@
 
   <!-- TAB: Settings -->
   <div id="tab-settings" class="tab-content">
+    <div class="workspace-heading"><div><span class="section-kicker">Preferences</span><h2>Settings</h2><p>Configure appearance, AI access, capture, and local data.</p></div></div>
     <div class="settings-scroll">
-      <!-- Theme on top (most used) -->
-      <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
-        <span style="font-size:12px;color:var(--text-secondary);font-weight:500">🎨 Theme</span>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="theme-btn active" data-theme-val="google-ads" style="background:#fff;color:#202124;border-color:#4285F4">🔵 Google Ads</button>
-          <button class="theme-btn" data-theme-val="ads-dark" style="background:#1a1c23;color:#e8eaed;border-color:#4285F4">🌙 Ads Dark</button>
-          <button class="theme-btn" data-theme-val="performance" style="background:#0f1a14;color:#e8eaed;border-color:#34A853">🟢 Performance</button>
-          <button class="theme-btn" data-theme-val="agency" style="background:#1a1410;color:#e8eaed;border-color:#F9AB00">🌟 Agency</button>
-          <button class="theme-btn" data-theme-val="minimal" style="background:#f5f5f5;color:#1e293b;border-color:#475569">⬜ Minimal</button>
+      <div class="appearance-section">
+        <div class="appearance-title"><span>Appearance</span><small>Choose a focused workspace style.</small></div>
+        <div class="theme-grid" role="radiogroup" aria-label="Color theme">
+          <button class="theme-btn theme-preview midnight active" data-theme-val="midnight" role="radio" aria-checked="true"><span class="preview-window"><i></i><b></b><em></em></span><span>Midnight</span><small>Focused dark</small></button>
+          <button class="theme-btn theme-preview cloud" data-theme-val="cloud" role="radio" aria-checked="false"><span class="preview-window"><i></i><b></b><em></em></span><span>Cloud</span><small>Clean light</small></button>
+          <button class="theme-btn theme-preview aurora" data-theme-val="aurora" role="radio" aria-checked="false"><span class="preview-window"><i></i><b></b><em></em></span><span>Aurora</span><small>Teal premium</small></button>
+          <button class="theme-btn theme-preview system" data-theme-val="system" role="radio" aria-checked="false"><span class="preview-window"><i></i><b></b><em></em></span><span>System</span><small>Follow Windows</small></button>
+        </div>
+        <div class="appearance-options">
+          <label><span><strong>Interface density</strong><small>Control list and panel spacing</small></span><select id="density-select" class="input-sm"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+          <label><span><strong>Reduce motion</strong><small>Minimize interface animation</small></span><input id="reduce-motion-cb" type="checkbox"></label>
+          <label><span><strong>Font size</strong><small>Adjust interface readability</small></span><select id="font-size" class="input-sm"><option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option></select></label>
+          <label><span><strong>Font type</strong><small>Choose your preferred reading style</small></span><select id="font-select" class="input-sm font-select"><option value="system-ui, -apple-system, sans-serif">System default</option><option value="'Segoe UI', Arial, sans-serif">Segoe UI</option><option value="Arial, Helvetica, sans-serif">Arial</option><option value="'Trebuchet MS', Arial, sans-serif">Trebuchet</option><option value="Georgia, 'Times New Roman', serif">Georgia</option><option value="'Courier New', monospace">Courier New</option></select></label>
         </div>
       </div>
       <div class="setting-divider"></div>
 
       <!-- API Key -->
       <div class="setting-row">
-        <span>🔑 DeepSeek API Key</span>
+        <span>DeepSeek API key</span>
         <input type="password" id="api-key-input" placeholder="sk-..." class="input-sm" style="flex:1;">
         <button id="save-api-btn" class="btn-sm">Save</button>
       </div>
       <div class="setting-divider"></div>
 
+      <details class="settings-advanced">
+        <summary>Advanced settings</summary>
+        <div class="settings-advanced-body">
       <!-- Actions -->
       <button id="force-capture-btn" class="btn-sm" style="width:100%;">
         <span class="emoji-icon">🔎</span> Force Capture Keywords
@@ -307,10 +406,23 @@
       <button id="clear-storage-btn" class="btn-sm btn-danger" style="width:100%;">
         <span class="emoji-icon">🧹</span> Clear All Data
       </button>
+        </div>
+      </details>
+      <div class="settings-save-bar">
+        <div>
+          <strong>Save preferences</strong>
+          <small>Store all appearance, behavior, and API settings on this device.</small>
+        </div>
+        <button id="save-all-settings-btn" class="btn-primary settings-save-btn" type="button">Save all settings</button>
+      </div>
     </div>
   </div>
 
-  <script src="popup.js"></script>
   <div id="toast-container"></div>
+  <script src="../vendor/supabase.js"></script>
+  <script src="supabase-config.js"></script>
+  <script src="auth.js"></script>
+  <script src="shell.js"></script>
+  <script src="popup.js"></script>
 </body>
 </html>
